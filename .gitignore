@@ -172,3 +172,16 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Entornos
+.env
+.env.*
+
+# Otros logs
+*.log
+
+/media/
