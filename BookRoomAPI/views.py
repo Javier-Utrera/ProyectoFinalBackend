@@ -163,8 +163,8 @@ def logout_usuario(request):
     return Response({"mensaje": "Sesión cerrada correctamente."})
 
 
-##SESION----------------------------------------------------------------------------------------
-#obtener_perfil-----------------------------------------------------------------------------------------   
+#SESION----------------------------------------------------------------------------------------
+##PERFIL-----------------------------------------------------------------------------------------   
 @swagger_auto_schema(
     method='get',
     operation_summary="Obtener perfil del usuario autenticado",
@@ -174,12 +174,23 @@ def logout_usuario(request):
         401: openapi.Response(description="Token no enviado o inválido")
     }
 )
-#@permission_classes([IsAuthenticated, EsCliente])
-@api_view(['GET'])
+@api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def obtener_perfil(request):
-    print("Usuario autenticado:", request.user)
-    print("Token:", request.auth)
     user = request.user
-    serializer = UsuarioConPerfilSerializer(user)
-    return Response(serializer.data)
+
+    try:
+        perfil = user.perfil
+    except PerfilCliente.DoesNotExist:
+        return Response({'error': 'Perfil no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = UsuarioConPerfilSerializer(user)
+        return Response(serializer.data)
+
+    if request.method == 'PATCH':
+        serializer = PerfilClienteUpdateSerializer(perfil, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'mensaje': 'Perfil actualizado correctamente'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

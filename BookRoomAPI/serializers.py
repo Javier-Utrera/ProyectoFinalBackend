@@ -1,3 +1,4 @@
+from datetime import date
 from rest_framework import serializers
 from .models import *
 import re
@@ -52,7 +53,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = ['id', 'username', 'email', 'rol']
 
-#SESION----------------------------------------------------------------------------------------
+#PERFIL----------------------------------------------------------------------------------------
 class PerfilClienteSerializer(serializers.ModelSerializer):
     class Meta:
         model = PerfilCliente
@@ -64,3 +65,39 @@ class UsuarioConPerfilSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ['id', 'username', 'email', 'rol', 'perfil']
+
+class PerfilClienteUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PerfilCliente
+        fields = ['biografia', 'fecha_nacimiento', 'pais', 'ciudad', 'generos_favoritos']
+
+    def validate_biografia(self, value):
+        if value and len(value) > 500:
+            raise serializers.ValidationError("La biografía no puede superar los 500 caracteres.")
+        return value
+
+    def validate_fecha_nacimiento(self, value):
+        if value and value > date.today():
+            raise serializers.ValidationError("La fecha de nacimiento no puede ser en el futuro.")
+        return value
+
+    def validar_campo_texto(self, valor, nombre_campo):
+        if valor and not re.match(r'^[A-Za-záéíóúÁÉÍÓÚñÑ ]+$', valor):
+            raise serializers.ValidationError(f"El campo {nombre_campo} contiene caracteres inválidos.")
+        return valor
+
+    def validate_pais(self, value):
+        return self.validar_campo_texto(value, "país")
+
+    def validate_ciudad(self, value):
+        return self.validar_campo_texto(value, "ciudad")
+
+    def validate_generos_favoritos(self, value):
+        if value:
+            if not re.match(r'^[A-Za-záéíóúÁÉÍÓÚñÑ ,]+$', value):
+                raise serializers.ValidationError("Los géneros favoritos deben contener solo letras y comas.")
+            # Validar que hay al menos un género separado por comas
+            generos = [g.strip() for g in value.split(',')]
+            if any(not g for g in generos):
+                raise serializers.ValidationError("Los géneros deben estar separados por comas correctamente.")
+        return value
