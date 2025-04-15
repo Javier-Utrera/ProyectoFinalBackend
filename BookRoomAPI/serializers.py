@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Usuario
+from .models import *
 import re
 
 class UsuarioSerializerRegistro(serializers.Serializer):
@@ -51,3 +51,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ['id', 'username', 'email', 'rol']
+
+#SESION----------------------------------------------------------------------------------------
+class PerfilClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PerfilCliente
+        exclude = ['usuario']
+
+class UsuarioConPerfilSerializer(serializers.ModelSerializer):
+    perfil = PerfilClienteSerializer(read_only=True)
+
+    class Meta:
+        model = Usuario
+        fields = ['id', 'username', 'email', 'rol', 'perfil']

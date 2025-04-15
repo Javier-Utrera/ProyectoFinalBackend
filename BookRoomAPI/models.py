@@ -16,7 +16,7 @@ class Usuario(AbstractUser):
         return self.username
 
 class PerfilCliente(models.Model):
-    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE)
+    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE,related_name='perfil')
 
     # Datos personales
     biografia = models.TextField(blank=True, null=True)

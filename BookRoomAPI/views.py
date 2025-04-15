@@ -14,12 +14,12 @@ from rest_framework.permissions import IsAuthenticated
 
 
 from .models import Usuario, PerfilCliente
-from .serializers import UsuarioSerializerRegistro, UsuarioSerializer
+from .serializers import *
 # Create your views here.
 def home(request):
     return HttpResponse("¡Bienvenido a The Book Room API!")
 
-
+#REGISTRO----------------------------------------------------------------------------------------
 class RegistrarUsuarioAPIView(generics.CreateAPIView):
     serializer_class = UsuarioSerializerRegistro
     permission_classes = [AllowAny]
@@ -45,7 +45,7 @@ class RegistrarUsuarioAPIView(generics.CreateAPIView):
         except Group.DoesNotExist:
             pass
 
-        # Crear token OAuth2 automáticamente
+        # Crear token OAuth2
         try:
             app = Application.objects.get(name="Angular App")
         except Application.DoesNotExist:
@@ -99,7 +99,7 @@ def login_usuario(request):
         expires__gt=timezone.now()
     ).first()
 
-    #Si no existe token válido, generarlo
+    #Si no existe token valido, generarlo
     if not token:
         token = AccessToken.objects.create(
             user=user,
@@ -120,3 +120,14 @@ def logout_usuario(request):
     if request.auth:
         request.auth.delete() 
     return Response({"mensaje": "Sesión cerrada correctamente."})
+
+
+#SESION----------------------------------------------------------------------------------------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def obtener_perfil(request):
+    print("Usuario autenticado:", request.user)
+    print("Token:", request.auth)
+    user = request.user
+    serializer = UsuarioConPerfilSerializer(user)
+    return Response(serializer.data)
