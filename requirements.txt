@@ -17,3 +17,4 @@ mysqlclient==2.2.7
 # Utilidades
 pillow==11.1.0
 requests==2.32.3
+drf-yasg>=1.21

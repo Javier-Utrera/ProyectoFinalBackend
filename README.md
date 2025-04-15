@@ -2,11 +2,29 @@
 
 Recuerda crear un archivo `.env` a partir de `.env.example` y completarlo con tus credenciales antes de iniciar el proyecto.
 
+## Uso de Swagger UI con autenticación Bearer Token
+
+La documentación interactiva de la API está disponible en:
+
+- [http://localhost:8000/swagger/](http://localhost:8000/swagger/) → Swagger UI
+- [http://localhost:8000/redoc/](http://localhost:8000/redoc/) → ReDoc
+
+### Autenticarse en Swagger con Bearer Token
+
+Para acceder a endpoints protegidos (por ejemplo, `GET /api/perfil/`, `POST /api/logout/`, etc.), es necesario autenticarse usando el token obtenido tras el login.
+
+#### Pasos:
+
+1. Accede a [http://localhost:8000/swagger/](http://localhost:8000/swagger/)
+2. Logueate introduciendo tu usuario y contraseña en el json, te devolvera un token
+3. Haz clic en el botón **"Authorize"** (esquina superior derecha)
+4. En el campo de autenticación, pega el token así: "Bearer <tu_token>"
+
+---
+
 ## Modelos
 
 La API utiliza un modelo de usuario personalizado y un perfil de cliente para almacenar información personal y literaria.
-
----
 
 ### Usuario (`Usuario`)
 
@@ -35,7 +53,7 @@ Está vinculado al modelo `Usuario` mediante una relación uno a uno (`OneToOneF
 class PerfilCliente(models.Model):
     usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, related_name='perfil')
 ```
-------------------------------------------------------------------------
+---
 
 ## Views.py
 
@@ -49,8 +67,6 @@ Permite registrar un nuevo usuario de tipo cliente. Incluye validaciones persona
 - Se crea su objeto `PerfilCliente` vinculado.
 - Se añade al grupo `Clientes`.
 
----
-
 ### Login (`POST /api/token/`)
 
 Autentica al usuario y devuelve un token OAuth2. Si ya existe un token válido, se reutiliza. En caso contrario, se genera uno nuevo. La respuesta incluye:
@@ -58,33 +74,25 @@ Autentica al usuario y devuelve un token OAuth2. Si ya existe un token válido, 
 - `access_token`
 - Datos del usuario autenticado
 
----
-
 ### Logout (`POST /api/logout/`)
 
 Elimina el token actual del usuario autenticado, cerrando su sesión de forma segura. Requiere autenticación mediante token.
-
----
 
 ### Obtener perfil de sesión (`GET /api/perfil/`)
 
 Devuelve los datos del usuario actualmente autenticado, junto con la información de su `PerfilCliente`. Este endpoint permite al frontend verificar si el usuario está logueado y mostrar su información.
 
----
-
 ### Obtener usuario desde token (`GET /api/token/usuario/<token>/`)
 
 Permite obtener la información de un usuario a partir de un token OAuth2 específico.
 
-------------------------------------------------------------------------
+---
 
 ## Serializadores (`serializers.py`)
 
 Los serializadores se utilizan para validar datos de entrada y estructurar las respuestas JSON de los modelos: 
 
 `Usuario` , `PerfilCliente`,
-
----
 
 ### UsuarioSerializerRegistro
 
@@ -95,8 +103,6 @@ Usado para registrar nuevos usuarios. Incluye validaciones personalizadas para:
 
 Se utiliza en el endpoint `POST /api/registro/`.
 
----
-
 ### UsuarioSerializer
 
 Serializador simple de lectura que devuelve los campos básicos del modelo `Usuario`:
@@ -104,13 +110,9 @@ Serializador simple de lectura que devuelve los campos básicos del modelo `Usua
 
 Se utiliza para devolver los datos de usuario autenticado, como en el login o en `obtener_usuario_por_token`.
 
----
-
 ### PerfilClienteSerializer
 
 Serializa los campos del perfil del cliente (`PerfilCliente`), excluyendo la relación con el usuario. Se utiliza para anidar la información del perfil en respuestas del usuario.
-
----
 
 ### UsuarioConPerfilSerializer
 
@@ -120,13 +122,11 @@ Serializador que combina:
 
 Se utiliza en el endpoint `/api/perfil/` para mostrar la sesión activa.
 
-------------------------------------------------------------------------
+---
 
 ## Autenticación y sesión con OAuth2
 
 El sistema de autenticación está basado en tokens OAuth2 usando el paquete `django-oauth-toolkit`
-
----
 
 ### Flujo de autenticación
 
@@ -136,8 +136,6 @@ El sistema de autenticación está basado en tokens OAuth2 usando el paquete `dj
 4. El frontend guarda el token en `localStorage`
 5. En cada petición protegida, el frontend incluye:
 
----
-
 #### Reutilización de tokens
 
 Para evitar duplicación innecesaria de tokens, el backend:
@@ -146,13 +144,9 @@ Para evitar duplicación innecesaria de tokens, el backend:
 - Si existe, lo reutiliza
 - Si no, genera uno nuevo con una duración de 10 horas
 
----
-
 #### Logout
 
 El endpoint `POST /api/logout/` permite al usuario autenticado cerrar su sesión eliminando el token actual del backend. Esto garantiza que el token no pueda reutilizarse aunque el frontend lo conserve.
-
----
 
 #### Control de sesión
 
@@ -177,3 +171,34 @@ El CORS permite peticiones desde Angular en http://localhost:4200 y http://127.0
 ### Seguridad
 - El login requiere nombre de usuario y contraseña válidos
 - Todo acceso a endpoints protegidos requiere un token válido
+
+---
+
+## Sistema de permisos
+
+El backend implementa un sistema de permisos basado en roles, utilizando las herramientas nativas de Django REST Framework junto con permisos personalizados definidos en `permissions.py`.
+
+### Roles definidos
+
+El modelo de usuario (`Usuario`) incluye un campo `rol` que distingue entre:
+
+- **Administrador (1)**: Puede acceder a funciones de gestión avanzadas (por implementar).
+- **Cliente (2)**: Rol por defecto. Puede acceder a las funcionalidades normales de la plataforma (leer, escribir, editar su perfil, etc.).
+
+### Estructura de permisos
+
+Los permisos se definen en el archivo `BookRoomAPI/permissions.py`, donde se incluyen:
+
+```python
+class EsAdministrador(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.rol == Usuario.ADMINISTRADOR
+
+class EsCliente(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.rol == Usuario.CLIENTE
+```
+
+### Ejemplo de uso en las vistas
+
+@permission_classes([IsAuthenticated, EsCliente])

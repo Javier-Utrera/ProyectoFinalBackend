@@ -20,13 +20,31 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="BookRoom API",
+        default_version='v1',
+        description="Documentación de la API de BookRoom. Registro, login, sesión, relatos y más.",
+        contact=openapi.Contact(email="tucorreo@ejemplo.com"),
+    ),
+    public=True,
+    permission_classes=[permissions.AllowAny],
+)
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('BookRoomAPI.urls')),
     # path('api/auth/', include('dj_rest_auth.urls')), #PARA EL LOGIN DE GOOGLE
     path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    # Swagger UI y ReDoc
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
 
-# Añadir soporte para servir archivos en desarrollo
+#  soporte para servir archivos en desarrollo
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

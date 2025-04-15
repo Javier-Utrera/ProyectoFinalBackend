@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'drf_yasg',
 ]
 
 SITE_ID = 1
@@ -170,4 +171,16 @@ ACCOUNT_SIGNUP_FIELDS = ['email', 'username*', 'password1*', 'password2*']
 OAUTH2_PROVIDER = {
     "ACCESS_TOKEN_EXPIRE_SECONDS": 36000000,
     "SCOPES": {"read": "Leer datos", "write": "Escribir datos"},
+}
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'Escribe aquí: **Bearer &lt;tu_token&gt;**'
+        }
+    },
+    'USE_SESSION_AUTH': False,
 }

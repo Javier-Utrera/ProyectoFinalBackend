@@ -2,8 +2,13 @@ from django.urls import include, path
 from . import views
 from .views import *
 
+from rest_framework import permissions
+
+
+
 urlpatterns = [
     path('', views.home),
+
     path('registro/', RegistrarUsuarioAPIView.as_view(), name='registro_usuario'),
     path('login/', login_usuario, name='login_usuario'),
     path('logout/', logout_usuario, name='logout_usuario'),

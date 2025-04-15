@@ -11,15 +11,18 @@ from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import Group
 from rest_framework.permissions import IsAuthenticated
-
+from .permissions import EsCliente
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from .models import Usuario, PerfilCliente
 from .serializers import *
+
 # Create your views here.
 def home(request):
     return HttpResponse("¡Bienvenido a The Book Room API!")
 
-#REGISTRO----------------------------------------------------------------------------------------
+##REGISTRO----------------------------------------------------------------------------------------
 class RegistrarUsuarioAPIView(generics.CreateAPIView):
     serializer_class = UsuarioSerializerRegistro
     permission_classes = [AllowAny]
@@ -63,7 +66,17 @@ class RegistrarUsuarioAPIView(generics.CreateAPIView):
             "access_token": token.token,
             "user": UsuarioSerializer(user).data
         }, status=201)
-
+    
+#obtener_usuario_por_token-----------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Obtener usuario por token",
+    operation_description="Devuelve la información del usuario asociado a un token OAuth2 específico.",
+    responses={
+        200: openapi.Response(description="Usuario encontrado y serializado correctamente"),
+        404: openapi.Response(description="Token o usuario no encontrado")
+    }
+)
 @api_view(['GET'])
 def obtener_usuario_por_token(request, token):
     try:
@@ -76,7 +89,25 @@ def obtener_usuario_por_token(request, token):
     except Usuario.DoesNotExist:
         return Response({"error": "Usuario no encontrado."}, status=404)
     
-
+#login_usuario-----------------------------------------------------------------------------------------    
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    required=['username', 'password'],
+    properties={
+        'username': openapi.Schema(type=openapi.TYPE_STRING, description="Nombre de usuario"),
+        'password': openapi.Schema(type=openapi.TYPE_STRING, description="Contraseña"),
+        },
+    ),
+    operation_summary="Login de usuario",
+    operation_description="Autentica a un usuario con username y password y devuelve un token OAuth2",
+    responses={
+        200: openapi.Response(description="Token generado correctamente"),
+        400: openapi.Response(description="Credenciales inválidas"),
+        500: openapi.Response(description="Error del servidor")
+    }
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_usuario(request):
@@ -114,6 +145,16 @@ def login_usuario(request):
         "user": UsuarioSerializer(user).data
     })
 
+#logout_usuario-----------------------------------------------------------------------------------------   
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Logout de usuario",
+    operation_description="Cierra la sesión del usuario autenticado eliminando el token actual.",
+    responses={
+        200: openapi.Response(description="Sesión cerrada correctamente"),
+        401: openapi.Response(description="No autenticado o token inválido")
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_usuario(request):
@@ -122,7 +163,18 @@ def logout_usuario(request):
     return Response({"mensaje": "Sesión cerrada correctamente."})
 
 
-#SESION----------------------------------------------------------------------------------------
+##SESION----------------------------------------------------------------------------------------
+#obtener_perfil-----------------------------------------------------------------------------------------   
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Obtener perfil del usuario autenticado",
+    operation_description="Devuelve los datos del usuario actualmente autenticado, incluyendo su perfil cliente.",
+    responses={
+        200: openapi.Response(description="Perfil cargado correctamente"),
+        401: openapi.Response(description="Token no enviado o inválido")
+    }
+)
+#@permission_classes([IsAuthenticated, EsCliente])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def obtener_perfil(request):
