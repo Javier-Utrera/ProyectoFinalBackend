@@ -1,22 +1,29 @@
 from django.http import HttpResponse
+
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
+
 from oauth2_provider.models import Application, AccessToken
 from oauthlib.common import generate_token
+
 from datetime import timedelta
 from django.utils import timezone
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import Group
 from rest_framework.permissions import IsAuthenticated
-from .permissions import EsCliente
+
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import Usuario, PerfilCliente
+from django.db.models import Count, F
+from .models import *
 from .serializers import *
+from .utils import *
+from .permissions import EsCliente
 
 # Create your views here.
 def home(request):
@@ -39,8 +46,6 @@ class RegistrarUsuarioAPIView(generics.CreateAPIView):
             password=serializer.validated_data["password1"],
             rol=Usuario.CLIENTE
         )
-
-        PerfilCliente.objects.create(usuario=user)
 
         try:
             grupo = Group.objects.get(name="Clientes")
@@ -166,7 +171,7 @@ def logout_usuario(request):
 #SESION----------------------------------------------------------------------------------------
 ##PERFIL-----------------------------------------------------------------------------------------   
 @swagger_auto_schema(
-    method='get',
+    methods=['get', 'patch'],
     operation_summary="Obtener perfil del usuario autenticado",
     operation_description="Devuelve los datos del usuario actualmente autenticado, incluyendo su perfil cliente.",
     responses={
@@ -179,18 +184,143 @@ def logout_usuario(request):
 def obtener_perfil(request):
     user = request.user
 
-    try:
-        perfil = user.perfil
-    except PerfilCliente.DoesNotExist:
-        return Response({'error': 'Perfil no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-
     if request.method == 'GET':
-        serializer = UsuarioConPerfilSerializer(user)
+        serializer = UsuarioSerializer(user)
         return Response(serializer.data)
 
     if request.method == 'PATCH':
-        serializer = PerfilClienteUpdateSerializer(perfil, data=request.data, partial=True)
+        serializer = UsuarioUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response({'mensaje': 'Perfil actualizado correctamente'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+#RELATOS----------------------------------------------------------------------------------------
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_listar_relatos_publicados(request):
+    relatos = Relato.objects.filter(estado='PUBLICADO').order_by('-fecha_creacion')
+    serializer = RelatoSerializer(relatos, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_listar_relatos(request):
+    relatos = Relato.objects.filter(autores=request.user).order_by('-fecha_creacion')
+    serializer = RelatoSerializer(relatos, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_obtener_relato(request, relato_id):
+    relato = obtener_relato_de_usuario(relato_id, request.user)
+    if not relato:
+        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_404_NOT_FOUND)
+    serializer = RelatoSerializer(relato)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+def api_ver_relato_publicado(request, relato_id):
+    try:
+        relato = Relato.objects.get(id=relato_id, estado='PUBLICADO')
+        serializer = RelatoSerializer(relato)
+        return Response(serializer.data)
+    except Relato.DoesNotExist:
+        return Response({"error": "Este relato no está publicado o no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_crear_relato(request):
+    serializer = RelatoCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        relato = serializer.save()
+
+        # Añadir creador como primer participante
+        ParticipacionRelato.objects.create(usuario=request.user, relato=relato)
+
+        # Verificar si se puede pasar a EN_PROCESO
+        relato.comprobar_estado_y_actualizar()
+
+        return Response({"mensaje": "Relato creado correctamente."}, status=status.HTTP_201_CREATED)
+    return api_errores(serializer)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_marcar_relato_listo(request, relato_id):
+    try:
+        relato = Relato.objects.get(id=relato_id, autores=request.user)
+    except Relato.DoesNotExist:
+        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        participacion = ParticipacionRelato.objects.get(usuario=request.user, relato=relato)
+    except ParticipacionRelato.DoesNotExist:
+        return Response({"error": "No estás registrado como colaborador de este relato."}, status=status.HTTP_404_NOT_FOUND)
+
+    if participacion.listo_para_publicar:
+        return Response({"mensaje": "Ya habías marcado este relato como listo."}, status=status.HTTP_200_OK)
+
+    participacion.listo_para_publicar = True
+    participacion.save()
+
+    relato.comprobar_si_publicar()
+
+    return Response({"mensaje": "Has marcado el relato como listo para publicar."})
+    
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def api_editar_relato(request, relato_id):
+    relato = obtener_relato_de_usuario(relato_id, request.user)
+    if not relato:
+        return Response({"error": "No tienes permisos para editar este relato."}, status=status.HTTP_403_FORBIDDEN)
+    serializer = RelatoUpdateSerializer(instance=relato, data=request.data, partial=True)
+    return api_errores(serializer, "Relato editado correctamente", status_success=status.HTTP_200_OK)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_eliminar_relato(request, relato_id):
+    relato = obtener_relato_de_usuario(relato_id, request.user)
+    if not relato:
+        return Response({"error": "No tienes permisos para eliminar este relato."}, status=status.HTTP_403_FORBIDDEN)
+    if relato.autores.count() > 1:
+        return Response({"error": "No puedes eliminar un relato con múltiples colaboradores."}, status=status.HTTP_403_FORBIDDEN)
+    relato.delete()
+    return Response({"mensaje": "Relato eliminado correctamente."}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_relatos_abiertos(request):
+    # 'annotate' agrega una columna virtual llamada 'total_autores' usando COUNT sobre la relación autores
+    relatos = Relato.objects.annotate(
+        total_autores=Count('autores')
+    ).filter(
+        estado='CREACION', 
+        total_autores__lt=F('num_escritores')  # 'F' permite comparar un atributo del modelo con otro atributo del modelo
+    )
+
+    # Serializamos los relatos filtrados
+    serializer = RelatoSerializer(relatos, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_unirse_a_relato(request, relato_id):
+    try:
+        relato = Relato.objects.get(id=relato_id)
+    except Relato.DoesNotExist:
+        return Response({'error': 'Relato no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if relato.estado != 'CREACION':
+        return Response({'error': 'Este relato ya no acepta más escritores.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if relato.autores.filter(id=request.user.id).exists():
+        return Response({'mensaje': 'Ya estás participando en este relato.'}, status=status.HTTP_200_OK)
+
+    if relato.autores.count() >= relato.num_escritores:
+        return Response({'error': 'El relato ya ha alcanzado el número máximo de escritores.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    ParticipacionRelato.objects.create(usuario=request.user, relato=relato)
+    relato.comprobar_estado_y_actualizar()
+
+    return Response({'mensaje': 'Te has unido correctamente al relato.'}, status=status.HTTP_201_CREATED)

@@ -1,193 +1,210 @@
-# https-github.com-Javier-Utrera-ProyectoFinalBackend
+# The Book Room APIREST
 
-Recuerda crear un archivo `.env` a partir de `.env.example` y completarlo con tus credenciales antes de iniciar el proyecto.
+Este repositorio contiene el backend de la aplicación **The Book Room**, desarrollado con Django y Django REST Framework. Proporciona una API REST para registro, autenticación, gestión de perfil de usuario, relatos colaborativos...
 
-## Uso de Swagger UI con autenticación Bearer Token
+---
 
-La documentación interactiva de la API está disponible en:
+## Configuración inicial
+
+Antes de ejecutar el proyecto, recuerda crear un archivo `.env` a partir del archivo `.env.example` y completarlo con tus credenciales.
+
+---
+
+## Documentación interactiva
+
+La API incluye documentación auto-generada accesible desde:
 
 - [http://localhost:8000/swagger/](http://localhost:8000/swagger/) → Swagger UI
 - [http://localhost:8000/redoc/](http://localhost:8000/redoc/) → ReDoc
 
 ### Autenticarse en Swagger con Bearer Token
 
-Para acceder a endpoints protegidos (por ejemplo, `GET /api/perfil/`, `POST /api/logout/`, etc.), es necesario autenticarse usando el token obtenido tras el login.
-
-#### Pasos:
-
-1. Accede a [http://localhost:8000/swagger/](http://localhost:8000/swagger/)
-2. Logueate introduciendo tu usuario y contraseña en el json, te devolvera un token
-3. Haz clic en el botón **"Authorize"** (esquina superior derecha)
-4. En el campo de autenticación, pega el token así: "Bearer <tu_token>"
+1. Accede a la documentación Swagger.
+2. Realiza login en `POST /api/login/` enviando tu `username` y `password`.
+3. Copia el `access_token` que recibas.
+4. Haz clic en **Authorize** en Swagger.
+5. Pega el token así: `Bearer <tu_token>`.
 
 ---
 
-## Modelos
+## Modelo de usuario
 
-La API utiliza un modelo de usuario personalizado y un perfil de cliente para almacenar información personal y literaria.
+### `Usuario`
 
-### Usuario (`Usuario`)
+Extiende `AbstractUser` e incluye:
 
-Este modelo hereda de `AbstractUser` y añade un campo adicional para el rol del usuario:
+- Rol (`ADMINISTRADOR` o `CLIENTE`)
+- Biografía, avatar, fecha de nacimiento, país, ciudad
+- Géneros favoritos (formato: texto separado por comas)
+- Métricas de actividad: relatos publicados, votos recibidos, palabras escritas, tiempo de escritura
 
-```python
-class Usuario(AbstractUser):
-    ADMINISTRADOR = 1
-    CLIENTE = 2
-
-    ROLES = (
-        (ADMINISTRADOR, "administrador"),
-        (CLIENTE, "cliente")
-    )
-
-    rol = models.PositiveSmallIntegerField(choices=ROLES, default=CLIENTE)
-```
-
-### Perfil de Cliente (`PerfilCliente`)
-
-El modelo `PerfilCliente` está diseñado para almacenar la información personal y literaria de los usuarios registrados como **clientes** en la plataforma.
-
-Está vinculado al modelo `Usuario` mediante una relación uno a uno (`OneToOneField`), lo que permite extender el perfil sin modificar directamente el modelo de autenticación.
-
-```python
-class PerfilCliente(models.Model):
-    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, related_name='perfil')
-```
----
-
-## Views.py
-
-Las vistas actuales implementan: lógica de registro, login, logout ,consulta de sesión mediante OAuth2,
-
-### Registro de usuario (`POST /api/registro/`)
-
-Permite registrar un nuevo usuario de tipo cliente. Incluye validaciones personalizadas para `username`, `email` y coincidencia de contraseñas. Al crear el usuario:
-
-- Se le asigna automáticamente el rol `CLIENTE`.
-- Se crea su objeto `PerfilCliente` vinculado.
-- Se añade al grupo `Clientes`.
-
-### Login (`POST /api/token/`)
-
-Autentica al usuario y devuelve un token OAuth2. Si ya existe un token válido, se reutiliza. En caso contrario, se genera uno nuevo. La respuesta incluye:
-
-- `access_token`
-- Datos del usuario autenticado
-
-### Logout (`POST /api/logout/`)
-
-Elimina el token actual del usuario autenticado, cerrando su sesión de forma segura. Requiere autenticación mediante token.
-
-### Obtener perfil de sesión (`GET /api/perfil/`)
-
-Devuelve los datos del usuario actualmente autenticado, junto con la información de su `PerfilCliente`. Este endpoint permite al frontend verificar si el usuario está logueado y mostrar su información.
-
-### Obtener usuario desde token (`GET /api/token/usuario/<token>/`)
-
-Permite obtener la información de un usuario a partir de un token OAuth2 específico.
-
----
-
-## Serializadores (`serializers.py`)
-
-Los serializadores se utilizan para validar datos de entrada y estructurar las respuestas JSON de los modelos: 
-
-`Usuario` , `PerfilCliente`,
-
-### UsuarioSerializerRegistro
-
-Usado para registrar nuevos usuarios. Incluye validaciones personalizadas para:
-- Username único y mínimo de caracteres
-- Email obligatorio y único
-- Coincidencia de contraseñas (`password1` y `password2`)
-
-Se utiliza en el endpoint `POST /api/registro/`.
-
-### UsuarioSerializer
-
-Serializador simple de lectura que devuelve los campos básicos del modelo `Usuario`:
-- `id`, `username`, `email`, `rol`
-
-Se utiliza para devolver los datos de usuario autenticado, como en el login o en `obtener_usuario_por_token`.
-
-### PerfilClienteSerializer
-
-Serializa los campos del perfil del cliente (`PerfilCliente`), excluyendo la relación con el usuario. Se utiliza para anidar la información del perfil en respuestas del usuario.
-
-### UsuarioConPerfilSerializer
-
-Serializador que combina:
-- Datos del modelo `Usuario`
-- Datos del modelo `PerfilCliente`
-
-Se utiliza en el endpoint `/api/perfil/` para mostrar la sesión activa.
+También implementa métodos útiles como:
+- `relatos_publicados()`, `relatos_en_proceso()`, `has_votado(relato)`
+- Gestión de amistades
 
 ---
 
 ## Autenticación y sesión con OAuth2
 
-El sistema de autenticación está basado en tokens OAuth2 usando el paquete `django-oauth-toolkit`
+La API utiliza `django-oauth-toolkit` para autenticación con tokens OAuth2.
 
-### Flujo de autenticación
+### Flujo
 
-1. El usuario se registra mediante `POST /api/registro/`
-2. Luego se loguea mediante `POST /api/token/`, enviando su `username` y `password`
-3. El servidor devuelve un `access_token` OAuth2
+1. Registro: `POST /api/registro/`
+2. Login: `POST /api/login/`
+3. El backend devuelve un `access_token` válido por 10 horas
 4. El frontend guarda el token en `localStorage`
-5. En cada petición protegida, el frontend incluye:
+5. Las peticiones protegidas deben incluir el token como **Bearer**
 
-#### Reutilización de tokens
+### Reutilización de tokens
 
-Para evitar duplicación innecesaria de tokens, el backend:
+- Si el usuario ya tiene un token válido, se reutiliza.
+- Si no, se genera uno nuevo.
 
-- Revisa si el usuario ya tiene un token activo (no expirado)
-- Si existe, lo reutiliza
-- Si no, genera uno nuevo con una duración de 10 horas
+### Logout
 
-#### Logout
+- `POST /api/logout/`
+- Elimina el token activo y cierra la sesión del usuario (Elimino el token de la base de datos, cuando haga login se creara un token nuevo).
 
-El endpoint `POST /api/logout/` permite al usuario autenticado cerrar su sesión eliminando el token actual del backend. Esto garantiza que el token no pueda reutilizarse aunque el frontend lo conserve.
+### Control de sesión
 
-#### Control de sesión
+- `GET /api/perfil/` devuelve los datos del usuario autenticado.
+- Lo uso para mantener la sesión activa y mostrar perfil en frontend.
 
-Se implementa un endpoint `GET /api/perfil/` que:
+---
 
-- Requiere un token válido
-- Devuelve los datos del usuario autenticado junto a su perfil cliente
-- Permite al frontend validar si la sesión sigue activa al recargar
+## Endpoints principales
 
-### Configuración
+### Registro de usuario
 
-El backend está configurado para usar:
+`POST /api/registro/`
 
-- OAuth2Authentication como clase de autenticación por defecto
+- Crea un nuevo usuario con rol `CLIENTE`
+- Genera automáticamente un token OAuth2
+- Añade al grupo "Clientes" si existe
 
-- IsAuthenticatedOrReadOnly como clase de permisos base
+### Login
 
-Los tokens se configuran con una duración de 10 horas
+`POST /api/login/`
 
-El CORS permite peticiones desde Angular en http://localhost:4200 y http://127.0.0.1:4200,
+- Requiere `username` y `password`
+- Devuelve:
+  ```json
+  {
+    "access_token": "abc123...",
+    "user": { ... }
+  }
+  ```
 
-### Seguridad
-- El login requiere nombre de usuario y contraseña válidos
-- Todo acceso a endpoints protegidos requiere un token válido
+### Logout
+
+`POST /api/logout/`
+
+- Elimina el token activo
+
+### Perfil
+
+`GET /api/perfil/` → obtener datos del usuario autenticado  
+`PATCH /api/perfil/` → editar campos: biografía, país, ciudad, géneros favoritos, etc.
+
+### Obtener usuario por token
+
+`GET /api/token/usuario/<token>/`
+
+- Devuelve datos del usuario asociado a ese token
+
+---
+
+## Endpoints de relatos
+
+Todos los endpoints de relatos requieren autenticación **excepto** los públicos.
+
+### Listar relatos publicados (público)
+
+`GET /api/relatos/publicados/`
+
+- Devuelve relatos en estado `PUBLICADO`.
+
+### Listar relatos del usuario
+
+`GET /api/relatos/`
+
+- Devuelve relatos donde el usuario participa.
+
+### Crear relato
+
+`POST /api/relatos/crear/`
+
+- Crea un nuevo relato con `titulo`, `descripcion`, `idioma`, `contenido` y `num_escritores`
+- El creador se convierte en el primer participante automáticamente
+
+### Ver relatos abiertos (público)
+
+`GET /api/relatos/abiertos/`
+
+- Devuelve relatos con estado `CREACION` y que aún admiten más escritores.
+
+### Unirse a relato
+
+`POST /api/relatos/<id>/unirse/`
+
+- Permite unirse a relatos abiertos
+
+### Editar relato
+
+`PUT/PATCH /api/relatos/<id>/editar/`
+
+- Solo si el usuario es colaborador del relato
+
+### Eliminar relato
+
+`DELETE /api/relatos/<id>/eliminar/`
+
+- Solo posible si el usuario es el único colaborador
+
+### Marcar relato como listo
+
+`POST /api/relatos/<id>/marcar-listo/`
+
+- Marca al usuario como listo para publicar
+- Si todos los autores están listos, el relato cambia a estado `PUBLICADO`
+
+---
+
+## Serializadores principales
+
+### `UsuarioSerializerRegistro`
+
+- Para `POST /api/registro/`
+- Valida campos: username, email, contraseñas
+
+### `UsuarioSerializer`
+
+- Para mostrar datos de usuario (login, perfil, etc.)
+
+### `UsuarioUpdateSerializer`
+
+- Para editar perfil (biografía, fecha, país, ciudad, géneros favoritos)
+        return self.validar_campo_texto(value, "ciudad")
+- Incluye validaciones : biografia,fecha_nacimiento,país,generos_favoritos
+
+### `RelatoSerializer`
+
+- Devuelve detalles de relato, incluyendo autores
+
+### `RelatoCreateSerializer`
+
+- Para crear un nuevo relato
+- Valida título, descripción y número de escritores
+
+### `RelatoUpdateSerializer`
+
+- Para editar relatos existentes
+- Valido de momento el estado
 
 ---
 
 ## Sistema de permisos
-
-El backend implementa un sistema de permisos basado en roles, utilizando las herramientas nativas de Django REST Framework junto con permisos personalizados definidos en `permissions.py`.
-
-### Roles definidos
-
-El modelo de usuario (`Usuario`) incluye un campo `rol` que distingue entre:
-
-- **Administrador (1)**: Puede acceder a funciones de gestión avanzadas (por implementar).
-- **Cliente (2)**: Rol por defecto. Puede acceder a las funcionalidades normales de la plataforma (leer, escribir, editar su perfil, etc.).
-
-### Estructura de permisos
-
-Los permisos se definen en el archivo `BookRoomAPI/permissions.py`, donde se incluyen:
 
 ```python
 class EsAdministrador(BasePermission):
@@ -199,6 +216,30 @@ class EsCliente(BasePermission):
         return request.user.is_authenticated and request.user.rol == Usuario.CLIENTE
 ```
 
-### Ejemplo de uso en las vistas
+Las aplico en las vistas con:
 
+```python
 @permission_classes([IsAuthenticated, EsCliente])
+```
+
+---
+
+## CORS y Seguridad
+
+- CORS configurado para permitir peticiones desde Angular en:
+  - `http://localhost:4200`
+  - `http://127.0.0.1:4200`
+- Los tokens expiran a las 10 horas.
+- Solo usuarios autenticados pueden acceder a rutas protegidas.
+
+---
+
+## Estructura del proyecto
+
+- `models.py`: Modelos de usuario, relato y participación
+- `serializers.py`: Validación y transformación de datos
+- `views.py`: Lógica de negocio y endpoints
+- `urls.py`: Definición de rutas API
+- `permissions.py`: Reglas de acceso según rol
+
+---

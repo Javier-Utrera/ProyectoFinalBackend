@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, PerfilCliente
+from .models import Usuario
 
 class UsuarioAdminPersonalizado(UserAdmin):
     model = Usuario
@@ -16,4 +16,3 @@ class UsuarioAdminPersonalizado(UserAdmin):
 
 
 admin.site.register(Usuario, UsuarioAdminPersonalizado)
-admin.site.register(PerfilCliente)
