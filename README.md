@@ -170,6 +170,54 @@ Todos los endpoints de relatos requieren autenticación **excepto** los público
 - Si todos los autores están listos, el relato cambia a estado `PUBLICADO`
 
 ---
+## Endpoints de gestión de amigos
+
+La API permite a los usuarios autenticados enviar solicitudes de amistad, aceptarlas, bloquearlas y eliminarlas.
+
+### Enviar solicitud de amistad
+
+`POST /api/amigos/enviar/`
+
+- Envia una solicitud a otro usuario (requiere `a_usuario` en el cuerpo).
+- No se permite enviar solicitudes a uno mismo ni duplicadas.
+
+### Ver solicitudes recibidas
+
+`GET /api/amigos/recibidas/`
+
+- Devuelve una lista de solicitudes pendientes que ha recibido el usuario actual.
+
+### Aceptar solicitud
+
+`POST /api/amigos/aceptar/<solicitud_id>/`
+
+- Acepta una solicitud recibida (solo el destinatario puede hacerlo).
+
+### Bloquear solicitud
+
+`POST /api/amigos/bloquear/<solicitud_id>/`
+
+- Bloquea una solicitud de amistad en estado `PENDIENTE`.
+
+### Ver amigos
+
+`GET /api/amigos/`
+
+- Lista todos los usuarios con los que el usuario tiene una amistad aceptada.
+
+### Ver solicitudes enviadas
+
+`GET /api/amigos/enviadas/`
+
+- Devuelve todas las solicitudes enviadas por el usuario que aún están pendientes.
+
+### Eliminar amigo
+
+`DELETE /api/amigos/eliminar/<usuario_id>/`
+
+- Elimina una relación de amistad aceptada con otro usuario.
+
+---
 
 ## Serializadores principales
 
@@ -201,6 +249,14 @@ Todos los endpoints de relatos requieren autenticación **excepto** los público
 
 - Para editar relatos existentes
 - Valido de momento el estado
+
+### `UsuarioAmigoSerializer`
+
+- Devuelve detalles de un usuario optimizado para listar en amigos
+
+### `PeticionAmistadSerializer`
+
+- Devuelve detalles de las peticiones de amistad
 
 ---
 

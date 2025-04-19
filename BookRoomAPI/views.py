@@ -19,7 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from django.db.models import Count, F
+from django.db.models import Count, F, Q
 from .models import *
 from .serializers import *
 from .utils import *
@@ -168,8 +168,10 @@ def logout_usuario(request):
     return Response({"mensaje": "Sesión cerrada correctamente."})
 
 
-#SESION----------------------------------------------------------------------------------------
-##PERFIL-----------------------------------------------------------------------------------------   
+#============================================================================================
+#PERFIL-----------------------------------------------------------------------------------------
+#============================================================================================
+
 @swagger_auto_schema(
     methods=['get', 'patch'],
     operation_summary="Obtener perfil del usuario autenticado",
@@ -194,8 +196,11 @@ def obtener_perfil(request):
             serializer.save()
             return Response({'mensaje': 'Perfil actualizado correctamente'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
+#============================================================================================    
 #RELATOS----------------------------------------------------------------------------------------
+#============================================================================================
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_listar_relatos_publicados(request):
@@ -324,3 +329,181 @@ def api_unirse_a_relato(request, relato_id):
     relato.comprobar_estado_y_actualizar()
 
     return Response({'mensaje': 'Te has unido correctamente al relato.'}, status=status.HTTP_201_CREATED)
+
+#============================================================================================
+#PETICIONES AMISTAD----------------------------------------------------------------------------------------
+#============================================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_enviar_solicitud_amistad(request):
+    receptor_id = request.data.get("a_usuario")
+
+    if not receptor_id:
+        return Response({"error": "Debes indicar el ID del usuario destinatario."}, status=400)
+
+    if receptor_id == request.user.id:
+        return Response({"error": "No puedes enviarte una solicitud a ti mismo."}, status=400)
+
+    try:
+        receptor = Usuario.objects.get(id=receptor_id)
+    except Usuario.DoesNotExist:
+        return Response({"error": "El usuario destinatario no existe."}, status=404)
+
+    # Verifico si ya existe alguna relacion entre el que envia y el que recibe
+    ya_existe = PeticionAmistad.objects.filter(
+        de_usuario=request.user, a_usuario=receptor
+    ).exists() or PeticionAmistad.objects.filter(
+        de_usuario=receptor, a_usuario=request.user
+    ).exists()
+
+    if ya_existe:
+        return Response({"error": "Ya existe una solicitud entre estos usuarios."}, status=400)
+
+    # Creo la solicitud de amistad
+    PeticionAmistad.objects.create(de_usuario=request.user, a_usuario=receptor)
+    return Response({"mensaje": "Solicitud de amistad enviada."}, status=201)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_solicitudes_recibidas(request):
+    solicitudes = request.user.amistades_por_responder().select_related('de_usuario')
+    serializer = PeticionAmistadSerializer(solicitudes, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_aceptar_solicitud_amistad(request, solicitud_id):
+    try:
+        solicitud = PeticionAmistad.objects.get(id=solicitud_id)
+    except PeticionAmistad.DoesNotExist:
+        return Response({"error": "Solicitud no encontrada."}, status=404)
+
+    # Solo el destinatario puede aceptarla
+    if solicitud.a_usuario != request.user:
+        return Response({"error": "No tienes permisos para aceptar esta solicitud."}, status=403)
+
+    if solicitud.estado != 'PENDIENTE':
+        return Response({"error": f"La solicitud ya fue {solicitud.estado.lower()}."}, status=400)
+
+    solicitud.estado = 'ACEPTADA'
+    solicitud.fecha_aceptacion = timezone.now()
+    solicitud.save()
+
+    return Response({"mensaje": "Solicitud de amistad aceptada correctamente."})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_listar_amigos(request):
+    amigos = request.user.amigos()
+    serializer = UsuarioAmigoSerializer(amigos, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_solicitudes_enviadas(request):
+    solicitudes = request.user.amistades_pendientes().select_related('a_usuario')
+    serializer = PeticionAmistadSerializer(solicitudes, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_bloquear_solicitud_amistad(request, solicitud_id):
+    try:
+        solicitud = PeticionAmistad.objects.get(id=solicitud_id)
+    except PeticionAmistad.DoesNotExist:
+        return Response({"error": "Solicitud no encontrada."}, status=404)
+
+    # Solo a quien se le envió la solicitud puede bloquearla
+    if solicitud.a_usuario != request.user:
+        return Response({"error": "No tienes permisos para bloquear esta solicitud."}, status=403)
+
+    bloqueador = request.user
+    bloqueado = solicitud.de_usuario
+
+    # Elimino la solicitud de amistad porque se quedado guardado en la base de datos que la solicitud fue enviada
+    # y cuando la bloqueo, reza de que la ha bloqueado el que la ha enviado, no el que la ha recibido
+    solicitud.delete()
+
+    # Verifico si ya existe un bloqueo
+    ya_bloqueado = PeticionAmistad.objects.filter(
+        de_usuario=bloqueador,
+        a_usuario=bloqueado,
+        estado='BLOQUEADA'
+    ).exists()
+
+    if ya_bloqueado:
+        return Response({"mensaje": "Este usuario ya estaba bloqueado."}, status=200)
+
+    # Creo el nuevo registro en la base de datos pero esta vez en estado BLOQUEADA directamente
+    PeticionAmistad.objects.create(
+        de_usuario=bloqueador,
+        a_usuario=bloqueado,
+        estado='BLOQUEADA'
+    )
+
+    return Response({"mensaje": "Has bloqueado al usuario correctamente."}, status=200)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_listar_bloqueados(request):
+    solicitudes_bloqueadas = PeticionAmistad.objects.filter(
+        de_usuario=request.user,
+        estado='BLOQUEADA'
+    ).select_related('a_usuario')
+
+    usuarios_bloqueados = [solicitud.a_usuario for solicitud in solicitudes_bloqueadas]
+    serializer = UsuarioAmigoSerializer(usuarios_bloqueados, many=True)
+    return Response(serializer.data)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_desbloquear_usuario(request, usuario_id):
+    try:
+        solicitud = PeticionAmistad.objects.get(
+            de_usuario=request.user,
+            a_usuario__id=usuario_id,
+            estado='BLOQUEADA'
+        )
+    except PeticionAmistad.DoesNotExist:
+        return Response({"error": "No has bloqueado a este usuario."}, status=404)
+
+    solicitud.delete()
+    return Response({"mensaje": "Usuario desbloqueado correctamente."})
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_eliminar_amigo(request, usuario_id):
+    try:
+        solicitud = PeticionAmistad.objects.get(
+            (
+                Q(de_usuario=request.user, a_usuario__id=usuario_id) |
+                Q(de_usuario__id=usuario_id, a_usuario=request.user)
+            ),
+            estado='ACEPTADA'
+        )
+    except PeticionAmistad.DoesNotExist:
+        return Response({"error": "No tienes una amistad con ese usuario."}, status=404)
+
+    solicitud.delete()
+    return Response({"mensaje": "Amistad eliminada correctamente."})
+
+#============================================================================================
+#BUSCADOR USUARIOS----------------------------------------------------------------------------------------
+#============================================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_buscar_usuarios(request):
+    query = request.query_params.get('q', '').strip()
+
+    if not query or len(query) < 3:
+        return Response([])
+
+    usuarios = Usuario.objects.filter(
+        username__icontains=query
+    ).exclude(id=request.user.id)
+
+    serializer = UsuarioAmigoSerializer(usuarios, many=True)
+    return Response(serializer.data)

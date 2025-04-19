@@ -47,7 +47,6 @@ class UsuarioSerializerRegistro(serializers.Serializer):
 
         return data
 
-
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
@@ -131,3 +130,24 @@ class RelatoUpdateSerializer(serializers.ModelSerializer):
         if value not in ['CREACION', 'EN_PROCESO', 'PUBLICADO']:
             raise serializers.ValidationError("Estado no válido.")
         return value
+    
+#PETICIONES AMISTAD----------------------------------------------------------------------------------------
+class UsuarioAmigoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = ['id', 'username', 'email', 'avatar', 'pais', 'ciudad']
+
+class PeticionAmistadSerializer(serializers.ModelSerializer):
+    de_usuario = UsuarioAmigoSerializer(read_only=True)
+    a_usuario = UsuarioAmigoSerializer(read_only=True)
+
+    class Meta:
+        model = PeticionAmistad
+        fields = [
+            'id',
+            'de_usuario',
+            'a_usuario',
+            'estado',
+            'fecha_solicitud',
+            'fecha_aceptacion'
+        ]

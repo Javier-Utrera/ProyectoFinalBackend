@@ -26,7 +26,7 @@ class Usuario(AbstractUser):
         null=True
     )
 
-    # Métricas globales
+    # Estadisticas globales
     total_relatos_publicados = models.PositiveIntegerField(default=0)
     total_votos_recibidos = models.PositiveIntegerField(default=0)
     total_palabras_escritas = models.PositiveIntegerField(default=0)

@@ -9,12 +9,14 @@ from rest_framework import permissions
 urlpatterns = [
     path('', views.home),
 
-    path('registro/', RegistrarUsuarioAPIView.as_view(), name='registro_usuario'),
+    path('registro/', RegistrarUsuarioAPIView.as_view()),
     path('login/', login_usuario, name='login_usuario'),
     path('logout/', logout_usuario, name='logout_usuario'),
-    path('token/usuario/<str:token>/', obtener_usuario_por_token, name='usuario_por_token'),
+    path('token/usuario/<str:token>/', obtener_usuario_por_token),
+
     #PERFIL----------------------------------------------------------------------------------------
     path('perfil/', obtener_perfil, name='obtener_perfil'),
+
     #RELATOS----------------------------------------------------------------------------------------
     path('relatos/publicados/', api_listar_relatos_publicados),
     path('relatos/', api_listar_relatos),
@@ -26,4 +28,18 @@ urlpatterns = [
     path('relatos/<int:relato_id>/marcar-listo/', api_marcar_relato_listo),
     path('relatos/abiertos/', api_relatos_abiertos),
     path('relatos/<int:relato_id>/unirse/', api_unirse_a_relato),
+
+    #BUSCADOR USUARIOS----------------------------------------------------------------------------------------
+    path('usuarios/buscar/', api_buscar_usuarios),    
+    #PETICIONES AMISTAD----------------------------------------------------------------------------------------
+    path('amigos/enviar/', api_enviar_solicitud_amistad),
+    path('amigos/recibidas/', api_solicitudes_recibidas),
+    path('amigos/aceptar/<int:solicitud_id>/', api_aceptar_solicitud_amistad),
+    path('amigos/', api_listar_amigos),
+    path('amigos/enviadas/', api_solicitudes_enviadas),
+    path('amigos/bloquear/<int:solicitud_id>/', api_bloquear_solicitud_amistad),
+    path('amigos/bloqueados/', api_listar_bloqueados),
+    path('amigos/desbloquear/<int:usuario_id>/', api_desbloquear_usuario),
+    path('amigos/eliminar/<int:usuario_id>/', api_eliminar_amigo),
+
 ]
