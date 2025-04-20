@@ -158,7 +158,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
-    )
+    ),
 }
 # Authentication settings
 AUTH_USER_MODEL = 'BookRoomAPI.Usuario'
@@ -174,13 +174,12 @@ OAUTH2_PROVIDER = {
 }
 
 SWAGGER_SETTINGS = {
+    'USE_SESSION_AUTH': False,
     'SECURITY_DEFINITIONS': {
         'Bearer': {
             'type': 'apiKey',
-            'name': 'Authorization',
             'in': 'header',
-            'description': 'Escribe aquí: **Bearer &lt;tu_token&gt;**'
+            'name': 'Authorization',
         }
     },
-    'USE_SESSION_AUTH': False,
 }

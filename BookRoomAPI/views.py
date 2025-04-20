@@ -22,6 +22,7 @@ from drf_yasg import openapi
 from django.db.models import Count, F, Q
 from .models import *
 from .serializers import *
+from .serializerSwagger import *
 from .utils import *
 from .permissions import EsCliente
 
@@ -29,57 +30,84 @@ from .permissions import EsCliente
 def home(request):
     return HttpResponse("¡Bienvenido a The Book Room API!")
 
-##REGISTRO----------------------------------------------------------------------------------------
-class RegistrarUsuarioAPIView(generics.CreateAPIView):
-    serializer_class = UsuarioSerializerRegistro
-    permission_classes = [AllowAny]
+#============================================================================================
+#AUTENTICACION Y REGISTRO--------------------------------------------------------------------
+#============================================================================================
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+#REGISTRAR USUARIO----------------------------------------------------------
+@swagger_auto_schema(
+    method='post',
+    tags=["Registro y login"],
+    operation_summary="Registro de usuario",
+    operation_description="""
+        Registra un nuevo usuario con rol CLIENTE.
+        - Crea el usuario
+        - Le asigna el grupo "Clientes"
+        - Devuelve un token OAuth2 válido por 10 horas
+    """,
+    request_body=UsuarioSerializerRegistro,
+    responses={
+        201: "Usuario registrado correctamente",
+        400: "Errores de validación",
+        500: "Error interno al generar el token"
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def registrar_usuario(request):
+    serializer = UsuarioSerializerRegistro(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    user = Usuario.objects.create_user(
+        username=serializer.validated_data["username"],
+        email=serializer.validated_data.get("email", ""),
+        password=serializer.validated_data["password1"],
+        rol=Usuario.CLIENTE
+    )
 
-        user = Usuario.objects.create_user(
-            username=serializer.validated_data["username"],
-            email=serializer.validated_data.get("email", ""),
-            password=serializer.validated_data["password1"],
-            rol=Usuario.CLIENTE
-        )
+    try:
+        grupo = Group.objects.get(name="Clientes")
+        grupo.user_set.add(user)
+    except Group.DoesNotExist:
+        pass
 
-        try:
-            grupo = Group.objects.get(name="Clientes")
-            grupo.user_set.add(user)
-        except Group.DoesNotExist:
-            pass
+    try:
+        app = Application.objects.get(name="Angular App")
+    except Application.DoesNotExist:
+        return Response({"error": "Aplicación OAuth2 no encontrada."}, status=500)
 
-        # Crear token OAuth2
-        try:
-            app = Application.objects.get(name="Angular App")
-        except Application.DoesNotExist:
-            return Response({"error": "Aplicación OAuth2 no encontrada."}, status=500)
+    token = AccessToken.objects.create(
+        user=user,
+        token=generate_token(),
+        application=app,
+        expires=timezone.now() + timedelta(hours=10),
+        scope='read write'
+    )
 
-        token = AccessToken.objects.create(
-            user=user,
-            token=generate_token(),
-            application=app,
-            expires=timezone.now() + timedelta(hours=10),
-            scope='read write'
-        )
-
-        return Response({
-            "access_token": token.token,
-            "user": UsuarioSerializer(user).data
-        }, status=201)
+    return Response({
+        "access_token": token.token,
+        "user": UsuarioSerializer(user).data
+    }, status=201)
     
-#obtener_usuario_por_token-----------------------------------------------------------------------------------------
+#DEVOLVER TOKEN--------------------------------------------------------------
 @swagger_auto_schema(
     method='get',
+    tags=["Registro y login"],
     operation_summary="Obtener usuario por token",
-    operation_description="Devuelve la información del usuario asociado a un token OAuth2 específico.",
+    operation_description="Devuelve la información del usuario asociado a un token OAuth2 proporcionado en la URL.",
+    manual_parameters=[
+        openapi.Parameter(
+            'token',
+            openapi.IN_PATH,
+            description="Token OAuth2 del usuario",
+            type=openapi.TYPE_STRING,
+            required=True
+        )
+    ],
     responses={
         200: openapi.Response(description="Usuario encontrado y serializado correctamente"),
-        404: openapi.Response(description="Token o usuario no encontrado")
+        404: openapi.Response(description="Token o usuario no encontrado"),
     }
 )
 @api_view(['GET'])
@@ -94,23 +122,17 @@ def obtener_usuario_por_token(request, token):
     except Usuario.DoesNotExist:
         return Response({"error": "Usuario no encontrado."}, status=404)
     
-#login_usuario-----------------------------------------------------------------------------------------    
+#LOGIN USUARIO--------------------------------------------------------------- 
 @swagger_auto_schema(
     method='post',
-    request_body=openapi.Schema(
-    type=openapi.TYPE_OBJECT,
-    required=['username', 'password'],
-    properties={
-        'username': openapi.Schema(type=openapi.TYPE_STRING, description="Nombre de usuario"),
-        'password': openapi.Schema(type=openapi.TYPE_STRING, description="Contraseña"),
-        },
-    ),
+    tags=["Registro y login"],
+    request_body=LoginSerializer,
     operation_summary="Login de usuario",
-    operation_description="Autentica a un usuario con username y password y devuelve un token OAuth2",
+    operation_description="Autentica a un usuario y devuelve un token OAuth2 si las credenciales son correctas.",
     responses={
-        200: openapi.Response(description="Token generado correctamente"),
-        400: openapi.Response(description="Credenciales inválidas"),
-        500: openapi.Response(description="Error del servidor")
+        200: "Logeo correcto, token generado y datos del usuario recibido",
+        400: "Credenciales inválidas",
+        500: "Error del servidor"
     }
 )
 @api_view(['POST'])
@@ -118,7 +140,6 @@ def obtener_usuario_por_token(request, token):
 def login_usuario(request):
     username = request.data.get("username")
     password = request.data.get("password")
-
     user = authenticate(username=username, password=password)
     if user is None:
         return Response({"error": "Credenciales inválidas."}, status=400)
@@ -128,14 +149,12 @@ def login_usuario(request):
     except Application.DoesNotExist:
         return Response({"error": "Aplicación OAuth2 no encontrada."}, status=500)
 
-    # Buscar token existente que no haya expirado
     token = AccessToken.objects.filter(
         user=user,
         application=app,
         expires__gt=timezone.now()
     ).first()
 
-    #Si no existe token valido, generarlo
     if not token:
         token = AccessToken.objects.create(
             user=user,
@@ -147,38 +166,57 @@ def login_usuario(request):
 
     return Response({
         "access_token": token.token,
-        "user": UsuarioSerializer(user).data
+        "user": UsuarioLoginResponseSerializer(user).data
     })
 
-#logout_usuario-----------------------------------------------------------------------------------------   
+#LOGOUT USUARIO---------------------------------------------------------------
 @swagger_auto_schema(
     method='post',
+    tags=["Registro y login"],
     operation_summary="Logout de usuario",
-    operation_description="Cierra la sesión del usuario autenticado eliminando el token actual.",
+    operation_description="Elimina el token OAuth2 actual del usuario, cerrando su sesión.",
     responses={
-        200: openapi.Response(description="Sesión cerrada correctamente"),
-        401: openapi.Response(description="No autenticado o token inválido")
+        200: "Sesión cerrada correctamente",
+        401: "Token inválido o no enviado"
     }
 )
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_usuario(request):
     if request.auth:
-        request.auth.delete() 
+        request.auth.delete()
     return Response({"mensaje": "Sesión cerrada correctamente."})
 
-
 #============================================================================================
-#PERFIL-----------------------------------------------------------------------------------------
+#PERFIL--------------------------------------------------------------------------------------
 #============================================================================================
 
 @swagger_auto_schema(
-    methods=['get', 'patch'],
-    operation_summary="Obtener perfil del usuario autenticado",
-    operation_description="Devuelve los datos del usuario actualmente autenticado, incluyendo su perfil cliente.",
+    method='get',
+    tags=["Perfil"],
+    operation_summary="Obtener perfil del usuario",
+    operation_description="Devuelve los datos del usuario actualmente autenticado.",
     responses={
-        200: openapi.Response(description="Perfil cargado correctamente"),
-        401: openapi.Response(description="Token no enviado o inválido")
+        200: "Perfil cargado correctamente",
+        401: "Token no enviado o inválido"
+    }
+)
+@swagger_auto_schema(
+    method='patch',
+    tags=["Perfil"],
+    operation_summary="Editar perfil del usuario",
+    operation_description="""
+        Permite modificar los campos del perfil del usuario autenticado:
+        - Biografía (máx. 500 caracteres)
+        - Fecha de nacimiento (no puede ser futura)
+        - País, ciudad (solo letras y espacios)
+        - Géneros favoritos (texto separado por comas)
+    """,
+    request_body=UsuarioUpdateSerializer,
+    responses={
+        200: "Perfil actualizado correctamente",
+        400: "Errores de validación",
+        401: "Token no enviado o inválido"
     }
 )
 @api_view(['GET', 'PATCH'])
@@ -198,9 +236,19 @@ def obtener_perfil(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 #============================================================================================    
-#RELATOS----------------------------------------------------------------------------------------
+#RELATOS-------------------------------------------------------------------------------------
 #============================================================================================
 
+#Listar relatos publicados-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    tags=["Relatos"],
+    operation_summary="Listar relatos publicados",
+    operation_description="Devuelve una lista de todos los relatos en estado 'PUBLICADO'. No requiere autenticación.",
+    responses={
+        200: "Lista de relatos publicados devuelta correctamente"
+    }
+)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_listar_relatos_publicados(request):
@@ -208,7 +256,17 @@ def api_listar_relatos_publicados(request):
     serializer = RelatoSerializer(relatos, many=True)
     return Response(serializer.data)
 
-
+#Listar relatos en los que participa el usuario atenticado-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    tags=["Relatos"],
+    operation_summary="Listar relatos del usuario autenticado",
+    operation_description="Devuelve todos los relatos en los que participa el usuario autenticado.",
+    responses={
+        200: "Lista de relatos devuelta correctamente",
+        401: "Token inválido o no enviado"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_listar_relatos(request):
@@ -216,6 +274,29 @@ def api_listar_relatos(request):
     serializer = RelatoSerializer(relatos, many=True)
     return Response(serializer.data)
 
+#Obtener relato del usuario autenticado-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    tags=["Relatos"],
+    operation_summary="Obtener un relato del usuario autenticado",
+    operation_description="""
+        Devuelve los datos de un relato específico en el que el usuario autenticado participa.
+        El relato debe estar asociado al usuario, de lo contrario se devolverá un error.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            'relato_id',
+            openapi.IN_PATH,
+            description="ID del relato",
+            type=openapi.TYPE_INTEGER,
+            required=True
+        )
+    ],
+    responses={
+        200: "Relato encontrado",
+        404: "Relato no encontrado o no pertenece al usuario"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_obtener_relato(request, relato_id):
@@ -225,7 +306,31 @@ def api_obtener_relato(request, relato_id):
     serializer = RelatoSerializer(relato)
     return Response(serializer.data)
 
+#Ver relato publicado-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    tags=["Relatos"],
+    operation_summary="Ver relato publicado (público)",
+    operation_description="""
+        Devuelve los datos de un relato publicado si existe.  
+        Este endpoint es accesible sin autenticación.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            'relato_id',
+            openapi.IN_PATH,
+            description="ID del relato",
+            type=openapi.TYPE_INTEGER,
+            required=True
+        )
+    ],
+    responses={
+        200: "Relato encontrado y publicado",
+        404: "El relato no está publicado o no existe"
+    }
+)
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def api_ver_relato_publicado(request, relato_id):
     try:
         relato = Relato.objects.get(id=relato_id, estado='PUBLICADO')
@@ -234,6 +339,22 @@ def api_ver_relato_publicado(request, relato_id):
     except Relato.DoesNotExist:
         return Response({"error": "Este relato no está publicado o no existe."}, status=status.HTTP_404_NOT_FOUND)
 
+#Crear relato-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='post',
+    tags=["Relatos"],
+    operation_summary="Crear nuevo relato",
+    operation_description="""
+        Crea un nuevo relato con los datos proporcionados.  
+        El usuario autenticado se convierte automáticamente en el primer participante.  
+        Si el relato cumple condiciones, cambia de estado automáticamente.
+    """,
+    request_body=RelatoCreateSerializer,
+    responses={
+        201: "Relato creado correctamente",
+        400: "Errores de validación"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_crear_relato(request):
@@ -250,6 +371,30 @@ def api_crear_relato(request):
         return Response({"mensaje": "Relato creado correctamente."}, status=status.HTTP_201_CREATED)
     return api_errores(serializer)
 
+#Marcar relato como listo para publicar-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='post',
+    tags=["Relatos"],
+    operation_summary="Marcar relato como listo para publicar",
+    operation_description="""
+        Permite que un colaborador marque su participación como lista.  
+        Si todos los participantes han marcado su relato como listo, se cambia el estado a PUBLICADO automáticamente.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            name="relato_id",
+            in_=openapi.IN_PATH,
+            type=openapi.TYPE_INTEGER,
+            description="ID del relato a marcar como listo",
+            required=True
+        )
+    ],
+    responses={
+        200: "Relato marcado como listo correctamente o ya estaba marcado",
+        403: "No tienes acceso al relato",
+        404: "No estás registrado como colaborador del relato"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_marcar_relato_listo(request, relato_id):
@@ -272,7 +417,32 @@ def api_marcar_relato_listo(request, relato_id):
     relato.comprobar_si_publicar()
 
     return Response({"mensaje": "Has marcado el relato como listo para publicar."})
-    
+
+#Editar relato-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    methods=['put', 'patch'],
+    tags=["Relatos"],
+    operation_summary="Editar un relato existente",
+    operation_description="""
+        Permite a un colaborador modificar los datos del relato.  
+        Solo puede hacerlo si forma parte del relato.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            name="relato_id",
+            in_=openapi.IN_PATH,
+            type=openapi.TYPE_INTEGER,
+            description="ID del relato a editar",
+            required=True
+        )
+    ],
+    request_body=RelatoUpdateSerializer,
+    responses={
+        200: "Relato editado correctamente",
+        400: "Errores de validación",
+        403: "No tienes permisos para editar este relato"
+    }
+)    
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def api_editar_relato(request, relato_id):
@@ -282,6 +452,29 @@ def api_editar_relato(request, relato_id):
     serializer = RelatoUpdateSerializer(instance=relato, data=request.data, partial=True)
     return api_errores(serializer, "Relato editado correctamente", status_success=status.HTTP_200_OK)
 
+#Eliminar relato-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='delete',
+    tags=["Relatos"],
+    operation_summary="Eliminar un relato",
+    operation_description="""
+        Elimina un relato si el usuario es su único colaborador.  
+        No es posible eliminar relatos con múltiples autores.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            name="relato_id",
+            in_=openapi.IN_PATH,
+            type=openapi.TYPE_INTEGER,
+            description="ID del relato a eliminar",
+            required=True
+        )
+    ],
+    responses={
+        200: "Relato eliminado correctamente",
+        403: "No tienes permisos o hay múltiples colaboradores"
+    }
+)
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def api_eliminar_relato(request, relato_id):
@@ -293,6 +486,19 @@ def api_eliminar_relato(request, relato_id):
     relato.delete()
     return Response({"mensaje": "Relato eliminado correctamente."}, status=status.HTTP_200_OK)
 
+#Listar relatos abiertos-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='get',
+    tags=["Relatos"],
+    operation_summary="Listar relatos abiertos",
+    operation_description="""
+        Devuelve los relatos en estado **CREACION** que todavía no han alcanzado el número máximo de escritores.  
+        Este endpoint es público y puede ser accedido sin autenticación.
+    """,
+    responses={
+        200: "Listado de relatos abiertos para colaboración"
+    }
+)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_relatos_abiertos(request):
@@ -308,6 +514,22 @@ def api_relatos_abiertos(request):
     serializer = RelatoSerializer(relatos, many=True)
     return Response(serializer.data)
 
+#Unirse a relato-------------------------------------------------------------------------------------
+@swagger_auto_schema(
+    method='post',
+    tags=["Relatos"],
+    operation_summary="Unirse a un relato",
+    operation_description="""
+        Permite que un usuario autenticado se una a un relato que aún se encuentra en estado **CREACION**  
+        y no ha alcanzado el número máximo de escritores.
+    """,
+    responses={
+        201: "Te has unido correctamente al relato",
+        200: "Ya estás participando en este relato",
+        400: "El relato ya no acepta más escritores o ya tiene el número máximo",
+        404: "Relato no encontrado"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_unirse_a_relato(request, relato_id):
@@ -333,7 +555,22 @@ def api_unirse_a_relato(request, relato_id):
 #============================================================================================
 #PETICIONES AMISTAD----------------------------------------------------------------------------------------
 #============================================================================================
-
+@swagger_auto_schema(
+    method='post',
+    tags=["Amistades"],
+    operation_summary="Enviar solicitud de amistad",
+    operation_description="""
+        Permite al usuario autenticado enviar una solicitud de amistad a otro usuario.
+        - No se permite enviar una solicitud a uno mismo.
+        - No se permite duplicar solicitudes existentes.
+    """,
+    request_body=SolicitudAmistadSerializer,
+    responses={
+        201: "Solicitud de amistad enviada",
+        400: "ID no proporcionado, usuario no válido o ya existe una solicitud",
+        404: "Usuario destinatario no encontrado"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_enviar_solicitud_amistad(request):
@@ -364,6 +601,17 @@ def api_enviar_solicitud_amistad(request):
     PeticionAmistad.objects.create(de_usuario=request.user, a_usuario=receptor)
     return Response({"mensaje": "Solicitud de amistad enviada."}, status=201)
 
+@swagger_auto_schema(
+    method='get',
+    tags=["Amistades"],
+    operation_summary="Listar solicitudes de amistad recibidas",
+    operation_description="""
+        Devuelve una lista de solicitudes de amistad que ha recibido el usuario autenticado y que aún no ha respondido.
+    """,
+    responses={
+        200: "Listado de solicitudes recibidas"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_solicitudes_recibidas(request):
@@ -371,6 +619,22 @@ def api_solicitudes_recibidas(request):
     serializer = PeticionAmistadSerializer(solicitudes, many=True)
     return Response(serializer.data)
 
+@swagger_auto_schema(
+    method='post',
+    tags=["Amistades"],
+    operation_summary="Aceptar solicitud de amistad",
+    operation_description="""
+        Permite al usuario autenticado aceptar una solicitud de amistad pendiente recibida.
+
+        La solicitud debe estar en estado `PENDIENTE`, y solo el destinatario (a_usuario) puede aceptarla.
+    """,
+    responses={
+        200: "Solicitud de amistad aceptada correctamente",
+        400: "La solicitud ya fue respondida o no es válida",
+        403: "No tienes permisos para aceptar esta solicitud",
+        404: "Solicitud no encontrada"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_aceptar_solicitud_amistad(request, solicitud_id):
@@ -392,6 +656,20 @@ def api_aceptar_solicitud_amistad(request, solicitud_id):
 
     return Response({"mensaje": "Solicitud de amistad aceptada correctamente."})
 
+@swagger_auto_schema(
+    method='get',
+    tags=["Amistades"],
+    operation_summary="Listar amigos del usuario",
+    operation_description="""
+        Devuelve una lista de todos los amigos del usuario autenticado.
+        
+        La relación de amistad debe estar en estado `ACEPTADA`.
+    """,
+    responses={
+        200: "Lista de amigos cargada correctamente",
+        401: "Token no enviado o inválido"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_listar_amigos(request):
@@ -399,6 +677,18 @@ def api_listar_amigos(request):
     serializer = UsuarioAmigoSerializer(amigos, many=True)
     return Response(serializer.data)
 
+@swagger_auto_schema(
+    method='get',
+    tags=["Amistades"],
+    operation_summary="Listar solicitudes de amistad enviadas",
+    operation_description="""
+        Devuelve todas las solicitudes de amistad que el usuario autenticado ha enviado y que aún están pendientes.
+    """,
+    responses={
+        200: "Solicitudes de amistad enviadas listadas correctamente",
+        401: "Token no enviado o inválido"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_solicitudes_enviadas(request):
@@ -406,6 +696,23 @@ def api_solicitudes_enviadas(request):
     serializer = PeticionAmistadSerializer(solicitudes, many=True)
     return Response(serializer.data)
 
+@swagger_auto_schema(
+    method='post',
+    tags=["Amistades"],
+    operation_summary="Bloquear usuario",
+    operation_description="""
+        Bloquea al usuario que envió la solicitud de amistad.  
+        - Elimina la solicitud original.  
+        - Crea una relación de tipo 'BLOQUEADA' en la base de datos.  
+        - Si ya estaba bloqueado, devuelve un mensaje informativo.
+    """,
+    responses={
+        200: "Usuario bloqueado correctamente o ya estaba bloqueado",
+        403: "No tienes permisos para bloquear esta solicitud",
+        404: "Solicitud no encontrada",
+        401: "Token no enviado o inválido"
+    }
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_bloquear_solicitud_amistad(request, solicitud_id):
@@ -444,7 +751,19 @@ def api_bloquear_solicitud_amistad(request, solicitud_id):
 
     return Response({"mensaje": "Has bloqueado al usuario correctamente."}, status=200)
 
-
+@swagger_auto_schema(
+    method='get',
+    tags=["Amistades"],
+    operation_summary="Listar usuarios bloqueados",
+    operation_description="""
+        Devuelve un listado de todos los usuarios que el usuario autenticado ha bloqueado.  
+        Utiliza relaciones `PeticionAmistad` con estado **'BLOQUEADA'**.
+    """,
+    responses={
+        200: "Lista de usuarios bloqueados devuelta correctamente",
+        401: "Token no enviado o inválido"
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_listar_bloqueados(request):
@@ -457,6 +776,19 @@ def api_listar_bloqueados(request):
     serializer = UsuarioAmigoSerializer(usuarios_bloqueados, many=True)
     return Response(serializer.data)
 
+@swagger_auto_schema(
+    method='delete',
+    tags=["Amistades"],
+    operation_summary="Desbloquear usuario",
+    operation_description="""
+        Elimina la relación de tipo 'BLOQUEADA' entre el usuario autenticado y el usuario con `usuario_id`.  
+        Esto permite que puedan volver a enviarse solicitudes de amistad.
+    """,
+    responses={
+        200: "Usuario desbloqueado correctamente",
+        404: "No se ha encontrado un bloqueo hacia ese usuario"
+    }
+)
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def api_desbloquear_usuario(request, usuario_id):
@@ -472,6 +804,19 @@ def api_desbloquear_usuario(request, usuario_id):
     solicitud.delete()
     return Response({"mensaje": "Usuario desbloqueado correctamente."})
 
+@swagger_auto_schema(
+    method='delete',
+    tags=["Amistades"],
+    operation_summary="Eliminar amistad",
+    operation_description="""
+        Elimina la relación de amistad con el usuario indicado por `usuario_id`.  
+        Esta acción es irreversible y elimina la solicitud aceptada entre ambos usuarios.
+    """,
+    responses={
+        200: "Amistad eliminada correctamente",
+        404: "No existe una relación de amistad con ese usuario"
+    }
+)
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def api_eliminar_amigo(request, usuario_id):
@@ -492,7 +837,29 @@ def api_eliminar_amigo(request, usuario_id):
 #============================================================================================
 #BUSCADOR USUARIOS----------------------------------------------------------------------------------------
 #============================================================================================
-
+@swagger_auto_schema(
+    method='get',
+    tags=["Amistades"],
+    operation_summary="Buscar usuarios",
+    operation_description="""
+        Busca usuarios por nombre de usuario `username` a partir del parámetro `q`.  
+        - La búsqueda requiere al menos 3 caracteres.  
+        - No devuelve al usuario autenticado.  
+        - Devuelve información básica del usuario.
+    """,
+    manual_parameters=[
+        openapi.Parameter(
+            name='q',
+            in_=openapi.IN_QUERY,
+            type=openapi.TYPE_STRING,
+            required=True,
+            description='Texto a buscar (mínimo 3 caracteres)'
+        )
+    ],
+    responses={
+        200: "Listado de usuarios encontrados",
+    }
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_buscar_usuarios(request):

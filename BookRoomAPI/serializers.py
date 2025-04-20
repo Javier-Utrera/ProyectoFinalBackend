@@ -4,10 +4,10 @@ from .models import *
 import re
 
 class UsuarioSerializerRegistro(serializers.Serializer):
-    username = serializers.CharField()
-    email = serializers.EmailField()
-    password1 = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
+    username = serializers.CharField(default="usuario123")
+    email = serializers.EmailField(default="correo@gmail.com")
+    password1 = serializers.CharField(default="contraseña",write_only=True)
+    password2 = serializers.CharField(default="contraseña",write_only=True)
 
     def validate(self, data):
         errores = {}
@@ -47,10 +47,18 @@ class UsuarioSerializerRegistro(serializers.Serializer):
 
         return data
 
+class UsuarioLoginResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = ['id', 'username', 'email', 'avatar', 'pais', 'ciudad']
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = '__all__'
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(default="usuario123")
+    password = serializers.CharField(default="contraseña123")
 
 #PERFIL----------------------------------------------------------------------------------------
 class UsuarioUpdateSerializer(serializers.ModelSerializer):
@@ -136,6 +144,12 @@ class UsuarioAmigoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ['id', 'username', 'email', 'avatar', 'pais', 'ciudad']
+
+class SolicitudAmistadSerializer(serializers.Serializer):
+    a_usuario = serializers.IntegerField(
+        min_value=1,
+        help_text="ID del usuario al que se envía la solicitud"
+    )
 
 class PeticionAmistadSerializer(serializers.ModelSerializer):
     de_usuario = UsuarioAmigoSerializer(read_only=True)

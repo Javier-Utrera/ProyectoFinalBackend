@@ -9,7 +9,7 @@ from rest_framework import permissions
 urlpatterns = [
     path('', views.home),
 
-    path('registro/', RegistrarUsuarioAPIView.as_view()),
+    path('registro/', registrar_usuario, name='registrar_usuario'),
     path('login/', login_usuario, name='login_usuario'),
     path('logout/', logout_usuario, name='logout_usuario'),
     path('token/usuario/<str:token>/', obtener_usuario_por_token),
