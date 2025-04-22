@@ -22,7 +22,6 @@ from drf_yasg import openapi
 from django.db.models import Count, F, Q
 from .models import *
 from .serializers import *
-from .serializerSwagger import *
 from .utils import *
 from .permissions import EsCliente
 
