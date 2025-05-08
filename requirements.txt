@@ -18,3 +18,7 @@ mysqlclient==2.2.7
 pillow==11.1.0
 requests==2.32.3
 drf-yasg>=1.21
+
+# WebSocket / ASGI
+channels==4.1.0
+daphne==4.1.0

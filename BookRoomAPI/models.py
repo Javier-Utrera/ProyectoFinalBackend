@@ -109,6 +109,12 @@ class ParticipacionRelato(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     relato = models.ForeignKey('Relato', on_delete=models.CASCADE)
 
+    # donde se guardara el HTML de este fragmento
+    contenido_fragmento = models.TextField(blank=True, null=True)
+
+    # posicion del fragmento en el relato
+    orden = models.PositiveSmallIntegerField()
+
     listo_para_publicar = models.BooleanField(default=False)
     fecha_ultima_aportacion = models.DateTimeField(auto_now=True)
 

@@ -28,6 +28,8 @@ urlpatterns = [
     path('relatos/<int:relato_id>/marcar-listo/', api_marcar_relato_listo),
     path('relatos/abiertos/', api_relatos_abiertos),
     path('relatos/<int:relato_id>/unirse/', api_unirse_a_relato),
+    path('relatos/<int:relato_id>/mi-fragmento/', api_mi_fragmento),
+    path('relatos/<int:relato_id>/mi-fragmento/ready/', api_marcar_fragmento_listo),
 
     #BUSCADOR USUARIOS----------------------------------------------------------------------------------------
     path('usuarios/buscar/', api_buscar_usuarios),    

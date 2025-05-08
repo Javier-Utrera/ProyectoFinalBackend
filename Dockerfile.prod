@@ -17,6 +17,6 @@ RUN apt-get update && apt-get install -y \
 
 COPY . .
 
-# Mantener el contenedor vivo para lanzar comandos manuales (runserver, migrate...)
-CMD ["tail", "-f", "/dev/null"]
+# Usar Gunicorn para servir Django automáticamente
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "ProyectoFinalBackend.asgi:application"]
 

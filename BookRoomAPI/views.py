@@ -362,7 +362,7 @@ def api_crear_relato(request):
         relato = serializer.save()
 
         # Añadir creador como primer participante
-        ParticipacionRelato.objects.create(usuario=request.user, relato=relato)
+        ParticipacionRelato.objects.create(usuario=request.user, relato=relato, orden=1)
 
         # Verificar si se puede pasar a EN_PROCESO
         relato.comprobar_estado_y_actualizar()
@@ -520,7 +520,7 @@ def api_relatos_abiertos(request):
     operation_summary="Unirse a un relato",
     operation_description="""
         Permite que un usuario autenticado se una a un relato que aún se encuentra en estado **CREACION**  
-        y no ha alcanzado el número máximo de escritores.
+        y no ha alcanzado el número máximo de escritores. Ademas establece el orden de participación.
     """,
     responses={
         201: "Te has unido correctamente al relato",
@@ -546,10 +546,75 @@ def api_unirse_a_relato(request, relato_id):
     if relato.autores.count() >= relato.num_escritores:
         return Response({'error': 'El relato ya ha alcanzado el número máximo de escritores.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    ParticipacionRelato.objects.create(usuario=request.user, relato=relato)
+    current = relato.participacionrelato_set.count()
+    orden = current + 1
+    ParticipacionRelato.objects.create(usuario=request.user, relato=relato,orden=orden)
     relato.comprobar_estado_y_actualizar()
 
     return Response({'mensaje': 'Te has unido correctamente al relato.'}, status=status.HTTP_201_CREATED)
+
+@swagger_auto_schema(
+    methods=['get', 'put'],
+    tags=["Relatos"],
+    operation_summary="Obtener o actualizar mi fragmento del relato",
+    operation_description="""
+        GET: Devuelve la participación (fragmento) del usuario en el relato.
+        PUT: Actualiza tu contenido_fragmento.
+    """,
+    request_body=MiFragmentoSerializer,
+    responses={
+        200: "Fragmento obtenido o actualizado correctamente",
+        400: "Datos inválidos",
+        404: "Relato o fragmento no encontrado"
+    }
+)
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+def api_mi_fragmento(request, relato_id):
+    # Verificar acceso al relato
+    try:
+        relato = Relato.objects.get(id=relato_id, autores=request.user)
+    except Relato.DoesNotExist:
+        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Obtener la participacion 
+    try:
+        participacion = ParticipacionRelato.objects.get(
+            relato=relato,
+            usuario=request.user
+        )
+    except ParticipacionRelato.DoesNotExist:
+        return Response({"error": "No estás participando en este relato."}, status=status.HTTP_404_NOT_FOUND)
+
+    # GET: devolver datos de la participación
+    if request.method == 'GET':
+        serializer = MiFragmentoSerializer(participacion)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # PUT: actualizar solo el contenido del fragmento
+    serializer = MiFragmentoSerializer(participacion, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_marcar_fragmento_listo(request, relato_id):
+    # (idéntica a api_marcar_relato_listo pero actúa sobre ParticipacionRelato)
+    participacion = ParticipacionRelato.objects.get(relato_id=relato_id, usuario=request.user)
+    participacion.listo_para_publicar = True
+    participacion.save()
+    # ahora comprueba todas las participaciones y, si están listas, concatena:
+    relato = participacion.relato
+    if not relato.participacionrelato_set.filter(listo_para_publicar=False).exists():
+        fragments = relato.participacionrelato_set.order_by('orden')
+        relatos_contenido = ''.join(f.contenido_fragmento or '' for f in fragments)
+        relato.contenido = relatos_contenido
+        relato.estado = 'PUBLICADO'
+        relato.save()
+    return Response({"mensaje": "Fragmento marcado como listo."})
+
+
 
 #============================================================================================
 #PETICIONES AMISTAD----------------------------------------------------------------------------------------

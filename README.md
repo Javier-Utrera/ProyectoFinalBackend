@@ -299,3 +299,37 @@ Las aplico en las vistas con:
 - `permissions.py`: Reglas de acceso según rol
 
 ---
+
+
+## Funcionalidades en tiempo real con WebSockets
+
+El backend incluye soporte para comunicación en tiempo real mediante WebSockets, usando **Django Channels** y el servidor ASGI **Daphne**.
+
+### Tecnologías usadas
+
+- `channels` (manejo de WebSocket)
+- `daphne` (servidor ASGI)
+- `AsyncWebsocketConsumer` para manejar conexiones
+
+---
+
+### Ruta de prueba WebSocket
+
+Se ha creado una ruta WebSocket de prueba accesible en: ws://localhost:8000/ws/test/
+
+Esta ruta permite enviar y recibir mensajes en tiempo real.
+
+#### Comportamiento:
+
+1. Al conectarse, el servidor responde con:
+  { "message": "¡Conexión WebSocket establecida!" }
+
+2. Cualquier mensaje que se envíe será devuelto como un "eco":
+  { "message": "Echo: tu mensaje aquí" }
+
+### Archivos añadidos
+
+- BookRoomAPI/routing.py: Define rutas WebSocket.
+- BookRoomAPI/consumers.py: Contiene el consumidor TestConsumer.
+- asgi.py: Ahora usa ProtocolTypeRouter para manejar tanto HTTP como WebSocket.
+

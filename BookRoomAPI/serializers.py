@@ -103,11 +103,35 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
         return value
     
 #RELATOS----------------------------------------------------------------------------------------
+class ParticipacionRelatoSerializer(serializers.ModelSerializer):
+    usuario = serializers.ReadOnlyField(source='usuario.id')
+
+    class Meta:
+        model = ParticipacionRelato
+        fields = [
+            'id',
+            'usuario',
+            'orden',
+            'contenido_fragmento',
+            'listo_para_publicar',
+            'fecha_ultima_aportacion',
+        ]
+        read_only_fields = ('id', 'usuario', 'orden', 'fecha_ultima_aportacion')
+
 class RelatoSerializer(serializers.ModelSerializer):
     autores = serializers.StringRelatedField(many=True)
+    participaciones = ParticipacionRelatoSerializer(
+        source='participacionrelato_set',
+        many=True,
+        read_only=True
+    )
+
     class Meta:
         model = Relato
-        fields = ['id', 'titulo', 'descripcion', 'contenido', 'idioma', 'estado', 'fecha_creacion', 'num_escritores', 'autores']
+        fields = [
+            'id', 'titulo', 'descripcion', 'idioma', 'estado','contenido',
+            'fecha_creacion', 'num_escritores', 'autores', 'participaciones'
+        ]
 
 class RelatoCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -123,12 +147,12 @@ class RelatoCreateSerializer(serializers.ModelSerializer):
         if not value or len(value) < 10:
             raise serializers.ValidationError("La descripción debe tener al menos 10 caracteres.")
         return value
-    
+
     def validate_num_escritores(self, value):
         if value < 1 or value > 4:
             raise serializers.ValidationError("El número de escritores debe estar entre 1 y 4.")
         return value
-    
+
 class RelatoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relato
@@ -138,6 +162,17 @@ class RelatoUpdateSerializer(serializers.ModelSerializer):
         if value not in ['CREACION', 'EN_PROCESO', 'PUBLICADO']:
             raise serializers.ValidationError("Estado no válido.")
         return value
+
+class MiFragmentoSerializer(serializers.ModelSerializer):
+    relato = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = ParticipacionRelato
+        fields = [
+            'id', 'relato', 'orden', 'contenido_fragmento', 'listo_para_publicar'
+        ]
+        read_only_fields = ('id', 'relato', 'orden', 'listo_para_publicar')
+
     
 #PETICIONES AMISTAD----------------------------------------------------------------------------------------
 class UsuarioAmigoSerializer(serializers.ModelSerializer):
