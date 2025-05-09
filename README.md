@@ -333,3 +333,93 @@ Esta ruta permite enviar y recibir mensajes en tiempo real.
 - BookRoomAPI/consumers.py: Contiene el consumidor TestConsumer.
 - asgi.py: Ahora usa ProtocolTypeRouter para manejar tanto HTTP como WebSocket.
 
+---
+
+## Endpoints de comentarios y votos
+
+### Comentarios
+
+#### Listar comentarios de un relato  
+
+GET /api/relatos/{relato\_id}/comentarios/
+
+#### Crear comentario  
+
+POST /api/relatos/{relato\_id}/comentarios/crear/
+
+* Validaciones:
+
+  * No vacío
+  * Máximo 1000 caracteres
+
+- El usuario solo va poder escribir un comentario por relato, se le puede dar la opcion de editar el comentario o de borrarlo
+
+#### Editar comentario
+
+PATCH /api/relatos/{relato_id}/comentarios/{comentario_id}/editar/
+
+- **Permisos**: sólo el autor  
+- **Body**: `{ "texto": "nuevo texto" }`  
+
+#### Borrar comentario
+
+- **Permisos**: sólo el autor  
+---
+
+### Votos
+
+#### Obtener mi voto en un relato
+
+GET /api/relatos/{relato_id}/mi-voto/
+
+
+* **Requiere autenticación**
+* Respuesta:
+
+  ```json
+  {
+    "id": 12,
+    "usuario": { "id": 3, "username": "juan" },
+    "puntuacion": 4,
+    "fecha": "2025-05-09T13:00:00Z",
+    "relato": 14
+  }
+  ```
+* Si no has votado, devuelve `404 Not Found`
+
+#### Votar o modificar mi voto
+
+POST /api/relatos/{relato_id}/votar/
+
+* **Requiere autenticación**
+* **Body**:
+
+  ```json
+  { "puntuacion": 1 } 
+  ```
+* Comportamiento:
+
+  * Crea o actualiza el voto (usando `update_or_create`)
+  * Recalcula `promedio_votos` en `Estadistica` del relato
+
+* Respuesta:
+
+  * `201 Created` si es el primer voto
+  * `200 OK` si modificas uno existente
+
+  ```json
+  {
+    "id": 34,
+    "usuario": { "id": 3, "username": "juan" },
+    "puntuacion": 1,
+    "fecha": "2025-05-09T14:00:00Z",
+    "relato": 14
+  }
+  ```
+
+---
+
+## Orden de lo views
+
+- El archivo de views.py se hacia ya enorme de leer, se tenia que ustar usando el F3 para buscar a cada comento, he decido crear una carpeta views y con el archivo __init__py. del directorio convertilo en un paquete, he creado varios views.py dependiendo de que parte del servicio controle para tenerlo todo mas controlado y estructurado.
+

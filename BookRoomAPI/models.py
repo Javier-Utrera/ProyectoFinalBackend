@@ -158,7 +158,7 @@ class Estadistica(models.Model):
     num_comentarios = models.PositiveIntegerField(default=0)
     promedio_votos = models.FloatField(default=0.0)
     total_palabras = models.PositiveIntegerField(default=0)
-    tiempo_total = models.PositiveIntegerField(default=0)  # en minutos
+    tiempo_total = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"Estadísticas de: {self.relato.titulo}"

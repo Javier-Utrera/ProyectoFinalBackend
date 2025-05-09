@@ -1,6 +1,8 @@
 from rest_framework.response import Response
 from rest_framework import status
 import traceback
+from django.db.models import Avg
+from .models import Voto
 
 from .models import Relato
 
@@ -22,3 +24,17 @@ def obtener_relato_de_usuario(relato_id, usuario):
         return Relato.objects.get(id=relato_id, autores=usuario)
     except Relato.DoesNotExist:
         return None
+    
+def actualizar_estadisticas(relato):
+    estad = relato.estadisticas
+    estad.num_colaboradores = relato.autores.count()
+    estad.num_comentarios   = relato.comentarios.count()
+    texto = relato.contenido or ""
+    estad.total_palabras     = len(texto.split())
+    estad.promedio_votos     = (
+        Voto.objects
+            .filter(relato=relato)
+            .aggregate(avg=Avg('puntuacion'))['avg']
+        or 0
+    )
+    estad.save()

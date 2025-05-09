@@ -200,3 +200,50 @@ class PeticionAmistadSerializer(serializers.ModelSerializer):
             'fecha_solicitud',
             'fecha_aceptacion'
         ]
+
+#COMENTARIOS----------------------------------------------------------------------------------------
+class ComentarioSerializer(serializers.ModelSerializer):
+    usuario = UsuarioAmigoSerializer(read_only=True)
+    
+    class Meta:
+        model = Comentario
+        fields = ['id', 'usuario', 'texto', 'fecha', 'relato']
+        read_only_fields = ('id', 'usuario', 'fecha', 'relato')
+
+    def validate_texto(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("El comentario no puede estar vacío.")
+        if len(value) > 1000:
+            raise serializers.ValidationError("El comentario no puede exceder 1000 caracteres.")
+        return value
+    
+#VOTOS----------------------------------------------------------------------------------------
+class VotoSerializer(serializers.ModelSerializer):
+    usuario = UsuarioAmigoSerializer(read_only=True)
+    
+    class Meta:
+        model = Voto
+        fields = ['id', 'usuario', 'puntuacion', 'fecha', 'relato']
+        read_only_fields = ('id', 'usuario', 'fecha', 'relato')
+
+    def validate_puntuacion(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("La puntuación debe estar entre 1 y 5.")
+        return value
+    
+#ESTADISTICAS----------------------------------------------------------------------------------------
+class EstadisticaSerializer(serializers.ModelSerializer):
+    relato = serializers.PrimaryKeyRelatedField(read_only=True)
+    titulo = serializers.CharField(source='relato.titulo', read_only=True)
+
+    class Meta:
+        model = Estadistica
+        fields = [
+            'relato',
+            'titulo',
+            'num_colaboradores',
+            'num_comentarios',
+            'promedio_votos',
+            'total_palabras',
+            'tiempo_total'
+        ]

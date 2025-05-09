@@ -7,7 +7,7 @@ from rest_framework import permissions
 
 
 urlpatterns = [
-    path('', views.home),
+    path('', views.home, name='home'),
 
     path('registro/', registrar_usuario, name='registrar_usuario'),
     path('login/', login_usuario, name='login_usuario'),
@@ -32,7 +32,8 @@ urlpatterns = [
     path('relatos/<int:relato_id>/mi-fragmento/ready/', api_marcar_fragmento_listo),
 
     #BUSCADOR USUARIOS----------------------------------------------------------------------------------------
-    path('usuarios/buscar/', api_buscar_usuarios),    
+    path('usuarios/buscar/', api_buscar_usuarios),
+
     #PETICIONES AMISTAD----------------------------------------------------------------------------------------
     path('amigos/enviar/', api_enviar_solicitud_amistad),
     path('amigos/recibidas/', api_solicitudes_recibidas),
@@ -43,5 +44,19 @@ urlpatterns = [
     path('amigos/bloqueados/', api_listar_bloqueados),
     path('amigos/desbloquear/<int:usuario_id>/', api_desbloquear_usuario),
     path('amigos/eliminar/<int:usuario_id>/', api_eliminar_amigo),
+
+    #COMENTARIOS----------------------------------------------------------------------------------------
+    path('relatos/<int:relato_id>/comentarios/',views.api_listar_comentarios_relato,name='listar-comentarios-relato'),
+    path('relatos/<int:relato_id>/comentarios/crear/',views.api_crear_comentario_relato,name='crear-comentario-relato'),
+    path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/editar/',api_editar_comentario_relato,name='editar-comentario'),
+    path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/borrar/',api_borrar_comentario_relato,name='borrar-comentario'),
+
+    #VOTOS----------------------------------------------------------------------------------------
+    path('relatos/<int:relato_id>/votar/', views.api_votar_relato, name='votar-relato'),
+    path('relatos/<int:relato_id>/mi-voto/', views.api_mi_voto_relato, name='mi-voto-relato'),
+
+    #ESTADISTICAS----------------------------------------------------------------------------------------
+    path('estadisticas/relatos/<int:relato_id>/', api_estadisticas_relato, name='estadisticas-relato'),
+    path('estadisticas/', api_listar_estadisticas, name='listar-estadisticas'),
 
 ]
