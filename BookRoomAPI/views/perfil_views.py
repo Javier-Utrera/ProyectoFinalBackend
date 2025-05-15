@@ -1,5 +1,6 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
@@ -33,6 +34,7 @@ from ..serializers import UsuarioSerializer, UsuarioUpdateSerializer
 )
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
 def obtener_perfil(request):
     # 1) Usuario autenticado
     user = request.user
@@ -50,3 +52,5 @@ def obtener_perfil(request):
     serializer.save()
     # 4) Confirmar actualización
     return Response({'mensaje': 'Perfil actualizado correctamente'}, status=status.HTTP_200_OK)
+
+

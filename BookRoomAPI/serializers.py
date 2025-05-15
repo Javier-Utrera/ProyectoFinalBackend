@@ -62,11 +62,12 @@ class LoginSerializer(serializers.Serializer):
 
 #PERFIL----------------------------------------------------------------------------------------
 class UsuarioUpdateSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = Usuario
         fields = [
             'biografia', 'fecha_nacimiento', 'pais',
-            'ciudad', 'generos_favoritos'
+            'ciudad', 'generos_favoritos','avatar', 
         ]
 
     def validate_biografia(self, value):

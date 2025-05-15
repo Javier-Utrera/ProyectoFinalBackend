@@ -18,18 +18,28 @@ urlpatterns = [
     path('perfil/', obtener_perfil, name='obtener_perfil'),
 
     #RELATOS----------------------------------------------------------------------------------------
-    path('relatos/publicados/', api_listar_relatos_publicados),
-    path('relatos/', api_listar_relatos),
-    path('relatos/crear/', api_crear_relato),
-    path('relatos/<int:relato_id>/', api_obtener_relato),
-    path('relatos/publicados/<int:relato_id>/', api_ver_relato_publicado),
-    path('relatos/<int:relato_id>/editar/', api_editar_relato),
-    path('relatos/<int:relato_id>/eliminar/', api_eliminar_relato),
-    path('relatos/<int:relato_id>/marcar-listo/', api_marcar_relato_listo),
-    path('relatos/abiertos/', api_relatos_abiertos),
-    path('relatos/<int:relato_id>/unirse/', api_unirse_a_relato),
-    path('relatos/<int:relato_id>/mi-fragmento/', api_mi_fragmento),
-    path('relatos/<int:relato_id>/mi-fragmento/ready/', api_marcar_fragmento_listo),
+
+    # Listados con CBV
+    path('relatos/publicados/',RelatosPublicadosList.as_view(),name='relatos-publicados'),
+    path('relatos/disponibles/',RelatosDisponiblesList.as_view(),name='relatos-disponibles'),
+    path('relatos/mis-relatos/',MisRelatosList.as_view(),name='relatos-mis-relatos'),
+
+    # Creación y detalle
+    path('relatos/crear/', api_crear_relato,name='relatos-crear'),
+    path('relatos/<int:relato_id>/',api_obtener_relato,name='relatos-detalle'),
+    path('relatos/publicados/<int:relato_id>/',api_ver_relato_publicado,name='relatos-detalle-publico'),
+
+    # Edición y borrado
+    path('relatos/<int:relato_id>/editar/',api_editar_relato,name='relatos-editar'),
+    path('relatos/<int:relato_id>/eliminar/',api_eliminar_relato,name='relatos-eliminar'),
+
+    # Marcado listo y participación
+    path('relatos/<int:relato_id>/marcar-listo/',api_marcar_relato_listo,name='relatos-marcar-listo'),
+    path('relatos/<int:relato_id>/unirse/',api_unirse_a_relato,name='relatos-unirse'),
+
+    # Fragmentos
+    path('relatos/<int:relato_id>/mi-fragmento/',api_mi_fragmento,name='relatos-mi-fragmento'),
+    path('relatos/<int:relato_id>/mi-fragmento/ready/',api_marcar_fragmento_listo,name='relatos-fragmento-ready'),
 
     #BUSCADOR USUARIOS----------------------------------------------------------------------------------------
     path('usuarios/buscar/', api_buscar_usuarios),

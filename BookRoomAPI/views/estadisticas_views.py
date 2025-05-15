@@ -51,9 +51,13 @@ def api_estadisticas_relato(request, relato_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_listar_estadisticas(request):
-    # 1) Recuperar todas las estadísticas, ordenadas por promedio de votos
-    estadisticas = Estadistica.objects.select_related('relato') \
-                                      .order_by('-promedio_votos')
+    # 1) Recuperar todas las estadísticas de los relatos publicados, ordenadas por promedio de votos y limitadas a 10
+    estadisticas = (
+    Estadistica.objects
+    .select_related('relato')
+    .filter(relato__estado='PUBLICADO')
+    .order_by('-promedio_votos')
+    )[:10]
 
     # 2) Serializar y devolver
     serializer = EstadisticaSerializer(estadisticas, many=True)

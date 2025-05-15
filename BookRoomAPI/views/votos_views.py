@@ -2,6 +2,7 @@ from rest_framework import  status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import F
 
 from drf_yasg.utils import swagger_auto_schema
 
@@ -49,7 +50,13 @@ def api_votar_relato(request, relato_id):
     # 4) Actualizar estadísticas del relato
     actualizar_estadisticas(relato)
 
-    # 5) Responder con el voto (200 si se modificó, 201 si es nuevo)
+    # 5) Si es la primera vez que este usuario vota,
+    if created:
+        for autor in relato.autores.all():
+            autor.total_votos_recibidos = F('total_votos_recibidos') + 1
+            autor.save(update_fields=['total_votos_recibidos'])
+
+    # 6) Responder con el voto (200 si se modificó, 201 si es nuevo)
     status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return Response(VotoSerializer(voto).data, status=status_code)
 
@@ -69,7 +76,7 @@ def api_mi_voto_relato(request, relato_id):
     try:
         voto = Voto.objects.get(relato_id=relato_id, usuario=request.user)
     except Voto.DoesNotExist:
-        return Response({"error": "No has votado este relato."}, status=404)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     serializer = VotoSerializer(voto)
     return Response(serializer.data)

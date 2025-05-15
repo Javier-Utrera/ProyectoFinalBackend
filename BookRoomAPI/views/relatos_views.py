@@ -6,7 +6,11 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.db.models import Count, F
 from django.db import transaction
+from rest_framework import generics
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 
+from BookRoomAPI.filtros import RelatoFilter
 from BookRoomAPI.models import Relato, ParticipacionRelato, Estadistica
 from BookRoomAPI.serializers import (
     RelatoSerializer,
@@ -21,40 +25,76 @@ from BookRoomAPI.utils import api_errores, obtener_relato_de_usuario, actualizar
 # RELATOS
 #============================================================================================
 
-@swagger_auto_schema(
-    method='get',
-    tags=["Relatos"],
-    operation_summary="Listar relatos publicados",
-    operation_description="Devuelve una lista de todos los relatos en estado 'PUBLICADO'. No requiere autenticación.",
-    responses={200: "Lista de relatos publicados devuelta correctamente"}
-)
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def api_listar_relatos_publicados(request):
-    # 1) Obtener todos los relatos con estado 'PUBLICADO', ordenados por fecha de creación desc.
-    relatos = Relato.objects.filter(estado='PUBLICADO').order_by('-fecha_creacion')
-    # 2) Serializar la lista de relatos.
-    serializer = RelatoSerializer(relatos, many=True)
-    # 3) Devolver la respuesta con los datos serializados.
-    return Response(serializer.data)
+class RelatosPublicadosList(generics.ListAPIView):
+    """
+    Listar relatos en estado PUBLICADO. Público.
+    """
+    queryset = Relato.objects.filter(estado='PUBLICADO')
+    serializer_class = RelatoSerializer
+    permission_classes = [AllowAny]
+
+    filter_backends = [
+        DjangoFilterBackend,  
+        SearchFilter,         # Para ?search
+        OrderingFilter,       # Para ?ordering
+    ]
+    filterset_class = RelatoFilter
+    search_fields   = ['titulo', 'descripcion']
+    ordering_fields = ['fecha_creacion', 'num_escritores', 'titulo']
+    ordering        = ['-fecha_creacion']
+
+    @swagger_auto_schema(
+        operation_summary="Listar relatos publicados",
+        operation_description=(
+            "Listado paginado de relatos PUBLICADOS. "
+            "Parámetros opcionales:\n"
+            "- `search`: búsqueda global en título o descripción.\n"
+            "- `titulo__icontains`, `descripcion__icontains`: búsquedas específicas.\n"
+            "- `idioma`, `num_escritores`, `num_escritores__gte`, `num_escritores__lte`.\n"
+            "- `fecha_desde`, `fecha_hasta`.\n"
+            "- `ordering`: campos `fecha_creacion`, `num_escritores`, `titulo`.\n"
+            "- `page`: número de página."
+        ),
+        responses={200: openapi.Response(
+            description="Listado de relatos publicados",
+            schema=RelatoSerializer(many=True)
+        )}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
-@swagger_auto_schema(
-    method='get',
-    tags=["Relatos"],
-    operation_summary="Listar relatos del usuario autenticado",
-    operation_description="Devuelve todos los relatos en los que participa el usuario autenticado.",
-    responses={200: "Lista de relatos devuelta correctamente", 401: "Token inválido o no enviado"}
-)
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def api_listar_relatos(request):
-    # 1) Filtrar relatos donde el usuario actual es autor, ordenados desc.
-    relatos = Relato.objects.filter(autores=request.user).order_by('-fecha_creacion')
-    # 2) Serializar la lista de relatos.
-    serializer = RelatoSerializer(relatos, many=True)
-    # 3) Devolver la respuesta.
-    return Response(serializer.data)
+class MisRelatosList(generics.ListAPIView):
+    """
+    Listar relatos en los que participa el usuario autenticado.
+    """
+    serializer_class = RelatoSerializer
+    permission_classes = [IsAuthenticated]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+    filterset_class = RelatoFilter
+    search_fields = ['titulo', 'descripcion']
+    ordering_fields = ['fecha_creacion', 'num_escritores', 'titulo']
+    ordering = ['-fecha_creacion']
+
+    def get_queryset(self):
+        return Relato.objects.filter(autores=self.request.user)\
+                           .order_by('-fecha_creacion')
+
+    @swagger_auto_schema(
+        operation_summary="Listar mis relatos",
+        operation_description="Devuelve listado de relatos donde el usuario es autor o colaborador.",
+        responses={200: openapi.Response(
+            description="Listado de mis relatos",
+            schema=RelatoSerializer(many=True)
+        )}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 @swagger_auto_schema(
@@ -117,26 +157,35 @@ def api_ver_relato_publicado(request, relato_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_crear_relato(request):
-    # 1) Validar datos de entrada con el serializer.
     serializer = RelatoCreateSerializer(data=request.data)
     if not serializer.is_valid():
         return api_errores(serializer)
 
-    # 2) Ejecutar en transacción para mantener consistencia.
     with transaction.atomic():
-        # 2.1) Crear el relato.
+        # 1) Creamos el relato, guardando su contenido inicial (puede venir vacío)
         relato = serializer.save()
-        # 2.2) Inicializar sus estadísticas.
+
+        # 2) Creamos las estadísticas nuevas
         Estadistica.objects.create(relato=relato)
-        # 2.3) Añadir al usuario actual como primer colaborador.
-        ParticipacionRelato.objects.create(usuario=request.user, relato=relato, orden=1)
-        # 2.4) Verificar si el relato pasa a EN_PROCESO.
+
+        # 3) Creamos la participación del creador (fragmento pendiente)
+        ParticipacionRelato.objects.create(
+            usuario=request.user,
+            relato=relato,
+            orden=1,
+            contenido_fragmento=''  # arrancamos vacío
+        )
+
+        # 4) Si ya basta con un solo autor, pasamos a EN_PROCESO
         relato.comprobar_estado_y_actualizar()
-        # 2.5) Calcular valores reales en estadísticas.
+
+        # 5) Llenamos estadísticas reales
         actualizar_estadisticas(relato)
 
-    # 3) Devolver confirmación.
-    return Response({"mensaje": "Relato creado correctamente."}, status=status.HTTP_201_CREATED)
+    return Response(
+        {"mensaje": "Relato creado correctamente."},
+        status=status.HTTP_201_CREATED
+    )
 
 
 @swagger_auto_schema(
@@ -221,21 +270,39 @@ def api_eliminar_relato(request, relato_id):
     return Response({"mensaje": "Relato eliminado correctamente."})
 
 
-@swagger_auto_schema(
-    method='get',
-    tags=["Relatos"],
-    operation_summary="Listar relatos abiertos",
-    operation_description="Relatos en CREACION con plazas libres. Público.",
-    responses={200: "Listado devuelto correctamente"}
-)
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def api_relatos_abiertos(request):
-    # 1) Anotar conteo de autores y filtrar CREACION vs num_escritores.
-    abiertos = Relato.objects.annotate(total_autores=Count('autores')) \
-                             .filter(estado='CREACION', total_autores__lt=F('num_escritores'))
-    # 2) Serializar y devolver.
-    return Response(RelatoSerializer(abiertos, many=True).data)
+class RelatosDisponiblesList(generics.ListAPIView):
+    """
+    Listar relatos en CREACION con plazas libres. Requiere autenticación.
+    """
+    queryset = Relato.objects.annotate(
+        total_autores=Count('autores')
+    ).filter(
+        estado='CREACION',
+        total_autores__lt=F('num_escritores')
+    ).order_by('-fecha_creacion')
+    serializer_class = RelatoSerializer
+    permission_classes = [IsAuthenticated]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+    filterset_class = RelatoFilter
+    search_fields = ['titulo', 'descripcion']
+    ordering_fields = ['fecha_creacion', 'num_escritores', 'titulo']
+    ordering = ['-fecha_creacion']
+
+    @swagger_auto_schema(
+        operation_summary="Listar relatos disponibles",
+        operation_description="Devuelve listado de relatos en creación con plazas libres para el usuario autenticado.",
+        responses={200: openapi.Response(
+            description="Listado de relatos disponibles",
+            schema=RelatoSerializer(many=True)
+        )}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 @swagger_auto_schema(
@@ -310,24 +377,52 @@ def api_mi_fragmento(request, relato_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_marcar_fragmento_listo(request, relato_id):
-    # 1) Recuperar la participaci ón
-    participacion = ParticipacionRelato.objects.get(relato_id=relato_id, usuario=request.user)
-    # 2) Marcar como listo y guardar
-    participacion.listo_para_publicar = True
-    participacion.save()
-
-    # 3) Si TODOS los fragmentos están listos, concatenar y publicar relato
-    relato = participacion.relato
-    pendientes = ParticipacionRelato.objects.filter(relato=relato, listo_para_publicar=False)
-    if not pendientes.exists():
-        contenido = "".join(
-            p.contenido_fragmento or ""
-            for p in ParticipacionRelato.objects.filter(relato=relato).order_by('orden')
+    # 1) Recuperar la participación del usuario
+    try:
+        participacion = ParticipacionRelato.objects.get(
+            relato_id=relato_id,
+            usuario=request.user
         )
-        relato.contenido = contenido
+    except ParticipacionRelato.DoesNotExist:
+        return Response(
+            {"error": "No estás participando en este relato."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+   # 2) Si aún no estaba listo, contamos y sumamos palabras escritas
+    if not participacion.listo_para_publicar:
+        texto = participacion.contenido_fragmento or ""
+        palabras = len(texto.split())
+        # Sumamos de golpe esas palabras al total del usuario
+        request.user.total_palabras_escritas = F('total_palabras_escritas') + palabras
+        request.user.save(update_fields=['total_palabras_escritas'])
+        # ahora sí marcamos como listo
+        participacion.listo_para_publicar = True
+        participacion.save()
+
+    # 3) Si TODOS los autores han marcado su fragmento, publicamos
+    relato = participacion.relato
+    pendientes = ParticipacionRelato.objects.filter(
+        relato=relato,
+        listo_para_publicar=False
+    )
+    if not pendientes.exists():
+        # 3.1) Tomamos el contenido inicial (campo relato.contenido)…
+        inicial = relato.contenido or ""
+        # 3.2) …y concatenamos todos los fragmentos por orden
+        fragments = ParticipacionRelato.objects.filter(relato=relato).order_by('orden')
+        relato.contenido = inicial + "".join(p.contenido_fragmento or "" for p in fragments)
         relato.estado = 'PUBLICADO'
         relato.save()
+
+        # 3.3) Actualizar las estadísticas del relato
         actualizar_estadisticas(relato)
 
-    # 4) Devolver confirmación
+        # 3.4) Incrementar el contador de “relatos publicados” de cada autor
+        for autor in relato.autores.all():
+            autor.total_relatos_publicados = F('total_relatos_publicados') + 1
+            autor.save(update_fields=['total_relatos_publicados'])
+
+    # 4) Responder al cliente
     return Response({"mensaje": "Fragmento marcado como listo."})

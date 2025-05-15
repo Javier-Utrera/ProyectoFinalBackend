@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+from cloudinary_storage.storage import MediaCloudinaryStorage
+avatar_storage = MediaCloudinaryStorage()
 # Create your models here.
 class Usuario(AbstractUser):
     ADMINISTRADOR = 1
@@ -15,7 +17,7 @@ class Usuario(AbstractUser):
 
     # Datos personales
     biografia = models.TextField(blank=True, null=True)
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    avatar = models.ImageField(upload_to='avatars/',storage=avatar_storage, blank=True, null=True)
     fecha_nacimiento = models.DateField(blank=True, null=True)
     pais = models.CharField(max_length=50, blank=True, null=True)
     ciudad = models.CharField(max_length=50, blank=True, null=True)
