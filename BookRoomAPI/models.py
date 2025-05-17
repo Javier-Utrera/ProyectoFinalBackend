@@ -178,9 +178,39 @@ class Comentario(models.Model):
     )
     texto = models.TextField()
     fecha = models.DateTimeField(auto_now_add=True)
+    votos = models.IntegerField(
+        default=0,
+        help_text="Contador neto de votos (positivo - negativo)"
+    )
 
     def __str__(self):
         return f"{self.usuario.username} comentó en '{self.relato.titulo}'"
+    
+class ComentarioVoto(models.Model):
+    VOTOARRIBA = 1
+    VOTOABAJO = -1
+    VALOR_CHOICES = [
+        (VOTOARRIBA, 'Voto-arriba'),
+        (VOTOABAJO, 'VOoto-abajo'),
+    ]
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+    comentario = models.ForeignKey(
+        Comentario,
+        on_delete=models.CASCADE,
+        related_name='votos_usuario'
+    )
+    valor = models.SmallIntegerField(choices=VALOR_CHOICES)
+
+    class Meta:
+        unique_together = ('usuario', 'comentario')
+
+    def __str__(self):
+        tipo = '+1' if self.valor == 1 else '-1'
+        return f"{self.usuario.username} {tipo} comentario {self.comentario_id}"
     
 class Voto(models.Model):
     usuario = models.ForeignKey(

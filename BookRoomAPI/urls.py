@@ -1,8 +1,6 @@
-from django.urls import include, path
+from django.urls import path
 from . import views
 from .views import *
-
-from rest_framework import permissions
 
 
 
@@ -16,6 +14,7 @@ urlpatterns = [
 
     #PERFIL----------------------------------------------------------------------------------------
     path('perfil/', obtener_perfil, name='obtener_perfil'),
+    path('perfil/<int:usuario_id>/', obtener_perfil_usuario, name='perfil-usuario'),
 
     #RELATOS----------------------------------------------------------------------------------------
 
@@ -56,17 +55,21 @@ urlpatterns = [
     path('amigos/eliminar/<int:usuario_id>/', api_eliminar_amigo),
 
     #COMENTARIOS----------------------------------------------------------------------------------------
-    path('relatos/<int:relato_id>/comentarios/',views.api_listar_comentarios_relato,name='listar-comentarios-relato'),
-    path('relatos/<int:relato_id>/comentarios/crear/',views.api_crear_comentario_relato,name='crear-comentario-relato'),
+    path('relatos/<int:relato_id>/comentarios/',api_listar_comentarios_relato,name='listar-comentarios-relato'),
+    path('relatos/<int:relato_id>/comentarios/crear/',api_crear_comentario_relato,name='crear-comentario-relato'),
     path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/editar/',api_editar_comentario_relato,name='editar-comentario'),
     path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/borrar/',api_borrar_comentario_relato,name='borrar-comentario'),
+    path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/votar/', api_votar_comentario, name='votar-comentario'),
+    path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/quitar-voto/',api_quitar_voto_comentario,name='quitar-voto-comentario'),
+    path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/voto/',api_eliminar_voto_comentario,name='eliminar-voto-comentario'),
 
     #VOTOS----------------------------------------------------------------------------------------
-    path('relatos/<int:relato_id>/votar/', views.api_votar_relato, name='votar-relato'),
-    path('relatos/<int:relato_id>/mi-voto/', views.api_mi_voto_relato, name='mi-voto-relato'),
+    path('relatos/<int:relato_id>/votar/', api_votar_relato, name='votar-relato'),
+    path('relatos/<int:relato_id>/mi-voto/', api_mi_voto_relato, name='mi-voto-relato'),
 
     #ESTADISTICAS----------------------------------------------------------------------------------------
     path('estadisticas/relatos/<int:relato_id>/', api_estadisticas_relato, name='estadisticas-relato'),
     path('estadisticas/', api_listar_estadisticas, name='listar-estadisticas'),
+    path('ranking-usuarios/', ranking_usuarios, name='ranking-usuarios'),
 
 ]

@@ -19,6 +19,13 @@ class RelatoFilter(filters.FilterSet):
     num_escritores__gte   = filters.NumberFilter(field_name='num_escritores', lookup_expr='gte')
     num_escritores__lte   = filters.NumberFilter(field_name='num_escritores', lookup_expr='lte')
 
+    # Busqueda por autor
+    autor = filters.CharFilter(
+        field_name='participacionrelato__usuario__username',
+        lookup_expr='icontains',
+        label='Usuario participante'
+    )
+
     class Meta:
         model = Relato
         fields = [
@@ -30,4 +37,5 @@ class RelatoFilter(filters.FilterSet):
             'num_escritores__lte',
             'fecha_desde',
             'fecha_hasta',
+            'autor',
         ]

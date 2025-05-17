@@ -52,9 +52,36 @@ class UsuarioLoginResponseSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = ['id', 'username', 'email', 'avatar', 'pais', 'ciudad']
 class UsuarioSerializer(serializers.ModelSerializer):
+    # Serializa el campo avatar devolviendo la URL de la imagen
+    avatar = serializers.ImageField(read_only=True)
+
     class Meta:
         model = Usuario
-        fields = '__all__'
+        # Solo los campos que necesita el frontend
+        fields = [
+            'id',
+            'username',
+            'email',
+            'avatar',
+            'biografia',
+            'fecha_nacimiento',
+            'pais',
+            'ciudad',
+            'generos_favoritos',
+            'total_relatos_publicados',
+            'total_votos_recibidos',
+            'total_palabras_escritas',
+        ]
+        # Opcionalmente, puedes marcar algunos campos como read_only:
+        read_only_fields = [
+            'id',
+            'username',
+            'email',
+            'avatar',
+            'total_relatos_publicados',
+            'total_votos_recibidos',
+            'total_palabras_escritas',
+        ]
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(default="usuario123")
@@ -204,19 +231,22 @@ class PeticionAmistadSerializer(serializers.ModelSerializer):
 
 #COMENTARIOS----------------------------------------------------------------------------------------
 class ComentarioSerializer(serializers.ModelSerializer):
-    usuario = UsuarioAmigoSerializer(read_only=True)
-    
+    mi_voto = serializers.SerializerMethodField()
+    usuario = UsuarioSerializer(read_only=True)
     class Meta:
         model = Comentario
-        fields = ['id', 'usuario', 'texto', 'fecha', 'relato']
-        read_only_fields = ('id', 'usuario', 'fecha', 'relato')
+        fields = ['id','usuario','texto','fecha','relato','votos','mi_voto']
+        read_only_fields = ('id','usuario','fecha','relato','votos','mi_voto')
 
-    def validate_texto(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("El comentario no puede estar vacío.")
-        if len(value) > 1000:
-            raise serializers.ValidationError("El comentario no puede exceder 1000 caracteres.")
-        return value
+    def get_mi_voto(self, obj):
+        user = self.context['request'].user
+        if user.is_anonymous:
+            return 0
+        try:
+            voto = obj.votos_usuario.get(usuario=user)
+            return voto.valor
+        except:
+            return 0
     
 #VOTOS----------------------------------------------------------------------------------------
 class VotoSerializer(serializers.ModelSerializer):
@@ -247,4 +277,18 @@ class EstadisticaSerializer(serializers.ModelSerializer):
             'promedio_votos',
             'total_palabras',
             'tiempo_total'
+        ]
+
+class UsuarioRankingSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.ImageField(source='avatar', read_only=True)
+
+    class Meta:
+        model = Usuario
+        fields = [
+            'id',
+            'username',
+            'avatar_url',
+            'total_relatos_publicados',
+            'total_votos_recibidos',
+            'total_palabras_escritas',
         ]

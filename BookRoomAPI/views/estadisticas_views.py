@@ -62,3 +62,16 @@ def api_listar_estadisticas(request):
     # 2) Serializar y devolver
     serializer = EstadisticaSerializer(estadisticas, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+def ranking_usuarios(request):
+    filtro = request.GET.get('filtro', 'relatos')
+    map_ord = {
+        'relatos': '-total_relatos_publicados',
+        'votos': '-total_votos_recibidos',
+        'palabras': '-total_palabras_escritas',
+    }
+    ordering = map_ord.get(filtro, '-total_relatos_publicados')
+    usuarios = Usuario.objects.order_by(ordering)[:10]
+    serializer = UsuarioRankingSerializer(usuarios, many=True)
+    return Response(serializer.data)
