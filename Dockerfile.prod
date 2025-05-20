@@ -1,22 +1,21 @@
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Instala dependencias del SO y Python
 COPY requirements.txt .
-
-RUN apt-get update && apt-get install -y \
-    gcc \
-    default-libmysqlclient-dev \
-    pkg-config \
+RUN apt-get update && apt-get install -y gcc default-libmysqlclient-dev pkg-config \
     && pip install --no-cache-dir -r requirements.txt \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Copia todo tu código y el entrypoint
 COPY . .
 
-# Usar Gunicorn para servir Django automáticamente
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "ProyectoFinalBackend.asgi:application"]
+# Usa el entrypoint para collectstatic + arranque
+ENTRYPOINT ["./entrypoint.sh"]
+
+EXPOSE 8000
 

@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import  status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -8,6 +9,7 @@ from drf_yasg import openapi
 from django.db.models import F
 
 from BookRoomAPI.models import *
+from BookRoomAPI.permissions import EsPropietarioOModerador
 from BookRoomAPI.serializers import *
 from BookRoomAPI.utils import *
 #============================================================================================
@@ -120,7 +122,7 @@ def api_crear_comentario_relato(request, relato_id):
 @swagger_auto_schema(
     methods=['patch'],
     tags=["Comentarios"],
-    operation_summary="Editar mi comentario en un relato",
+    operation_summary="Editar comentario (autor, moderador o admin)",
     request_body=ComentarioSerializer,
     responses={200: ComentarioSerializer, 400: "Validación", 403: "Sin permiso", 404: "No encontrado"}
 )
@@ -128,79 +130,58 @@ def api_crear_comentario_relato(request, relato_id):
 @permission_classes([IsAuthenticated])
 def api_editar_comentario_relato(request, relato_id, comentario_id):
     # 1) Comprobar relato publicado
-    try:
-        Relato.objects.get(id=relato_id, estado='PUBLICADO')
-    except Relato.DoesNotExist:
-        return Response(
-            {"error": "El relato no está publicado o no existe."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    get_object_or_404(Relato, id=relato_id, estado='PUBLICADO')
 
-    # 2) Recuperar el comentario
-    try:
-        comentario = Comentario.objects.get(id=comentario_id, relato_id=relato_id)
-    except Comentario.DoesNotExist:
-        return Response(
-            {"error": "Comentario no encontrado."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    # 2) Recuperar el comentario o 404
+    comentario = get_object_or_404(Comentario, id=comentario_id, relato_id=relato_id)
 
-    # 3) Comprobar que es del usuario
-    if comentario.usuario != request.user:
+    # 3) Permisos: autor, moderador o admin
+    permiso = EsPropietarioOModerador()
+    if not permiso.has_object_permission(request, view=None, obj=comentario):
         return Response(
             {"error": "No tienes permiso para editar este comentario."},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 4) Validar y actualizar el comentario
-    serializer = ComentarioSerializer(comentario, data=request.data, partial=True,context={'request': request})
+    # 4) Validar y guardar
+    serializer = ComentarioSerializer(comentario, data=request.data, partial=True, context={'request': request})
     serializer.is_valid(raise_exception=True)
     serializer.save()
 
-    # 5) Actualizar estadísticas y devolver el comentario
+    # 5) Actualizar estadísticas y devolver
     actualizar_estadisticas(comentario.relato)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 @swagger_auto_schema(
     method='delete',
     tags=["Comentarios"],
-    operation_summary="Eliminar mi comentario en un relato",
+    operation_summary="Eliminar comentario (autor, moderador o admin)",
     responses={200: "Comentario eliminado", 403: "Sin permiso", 404: "No encontrado"}
 )
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def api_borrar_comentario_relato(request, relato_id, comentario_id):
     # 1) Comprobar relato publicado
-    try:
-        Relato.objects.get(id=relato_id, estado='PUBLICADO')
-    except Relato.DoesNotExist:
-        return Response(
-            {"error": "El relato no está publicado o no existe."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    get_object_or_404(Relato, id=relato_id, estado='PUBLICADO')
 
-    # 2) Recuperar el comentario
-    try:
-        comentario = Comentario.objects.get(id=comentario_id, relato_id=relato_id)
-    except Comentario.DoesNotExist:
-        return Response(
-            {"error": "Comentario no encontrado."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    # 2) Recuperar el comentario o 404
+    comentario = get_object_or_404(Comentario, id=comentario_id, relato_id=relato_id)
 
-    # 3) Comprobar que es del usuario
-    if comentario.usuario != request.user:
+    # 3) Permisos: autor, moderador o admin
+    permiso = EsPropietarioOModerador()
+    if not permiso.has_object_permission(request, view=None, obj=comentario):
         return Response(
             {"error": "No tienes permiso para eliminar este comentario."},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 4) Eliminar comentario y actualizar estadísticas
+    # 4) Eliminar y actualizar estadísticas
     relato = comentario.relato
     comentario.delete()
     actualizar_estadisticas(relato)
 
-    # 5) Devolver confirmación
+    # 5) Confirmación
     return Response(
         {"mensaje": "Comentario eliminado correctamente."},
         status=status.HTTP_200_OK

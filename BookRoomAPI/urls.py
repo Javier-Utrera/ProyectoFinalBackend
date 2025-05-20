@@ -23,6 +23,9 @@ urlpatterns = [
     path('relatos/disponibles/',RelatosDisponiblesList.as_view(),name='relatos-disponibles'),
     path('relatos/mis-relatos/',MisRelatosList.as_view(),name='relatos-mis-relatos'),
 
+    # Expongo los choices idiomas y generos
+    path('opciones-relato/', opciones_relato, name='opciones_relato'),
+
     # Creación y detalle
     path('relatos/crear/', api_crear_relato,name='relatos-crear'),
     path('relatos/<int:relato_id>/',api_obtener_relato,name='relatos-detalle'),
@@ -31,6 +34,9 @@ urlpatterns = [
     # Edición y borrado
     path('relatos/<int:relato_id>/editar/',api_editar_relato,name='relatos-editar'),
     path('relatos/<int:relato_id>/eliminar/',api_eliminar_relato,name='relatos-eliminar'),
+
+    #Edicion y borrado relato MODERADOR
+    path('moderador/relatos/<int:relato_id>/editar-final/',api_editar_relato_final,name='moderador-editar-relato-final'),
 
     # Marcado listo y participación
     path('relatos/<int:relato_id>/marcar-listo/',api_marcar_relato_listo,name='relatos-marcar-listo'),

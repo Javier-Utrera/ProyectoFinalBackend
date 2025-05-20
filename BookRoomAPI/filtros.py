@@ -14,6 +14,9 @@ class RelatoFilter(filters.FilterSet):
     # Idioma exacto
     idioma = filters.CharFilter(field_name='idioma', lookup_expr='exact')
 
+    # Generos
+    generos = django_filters.CharFilter(field_name='generos', lookup_expr='icontains')
+
     # Número de escritores: exacto, >= y <=
     num_escritores        = filters.NumberFilter(field_name='num_escritores', lookup_expr='exact')
     num_escritores__gte   = filters.NumberFilter(field_name='num_escritores', lookup_expr='gte')
@@ -32,6 +35,7 @@ class RelatoFilter(filters.FilterSet):
             'titulo__icontains',
             'descripcion__icontains',
             'idioma',
+            'generos',
             'num_escritores',
             'num_escritores__gte',
             'num_escritores__lte',

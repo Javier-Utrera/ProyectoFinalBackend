@@ -50,6 +50,7 @@ SITE_ID = 1
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -148,11 +149,14 @@ SWAGGER_SETTINGS = {
     'SECURITY_DEFINITIONS': {
         'Bearer': {
             'type': 'apiKey',
-            'in': 'header',
             'name': 'Authorization',
-        }
-    }
+            'in': 'header',
+            'description': "Pega tu token: 'Bearer <tu_token>'"
+        },
+    },
+    'DEFAULT_SECURITY': [{'Bearer': []}],
 }
+
 
 # Channels
 CHANNEL_LAYERS = {

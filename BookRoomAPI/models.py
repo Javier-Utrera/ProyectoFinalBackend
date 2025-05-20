@@ -6,18 +6,26 @@ avatar_storage = MediaCloudinaryStorage()
 # Create your models here.
 class Usuario(AbstractUser):
     ADMINISTRADOR = 1
-    CLIENTE = 2
+    CLIENTE       = 2
+    MODERADOR     = 3
 
     ROLES = (
         (ADMINISTRADOR, "administrador"),
-        (CLIENTE, "cliente")
+        (MODERADOR,     "moderador"),
+        (CLIENTE,       "cliente"),
     )
 
     rol = models.PositiveSmallIntegerField(choices=ROLES, default=CLIENTE)
 
     # Datos personales
     biografia = models.TextField(blank=True, null=True)
-    avatar = models.ImageField(upload_to='avatars/',storage=avatar_storage, blank=True, null=True)
+    avatar = models.ImageField(
+        upload_to='avatars/',
+        storage=avatar_storage,
+        blank=True,
+        null=True,
+        default='avatars/img_avatar_ptmeu8'
+    )
     fecha_nacimiento = models.DateField(blank=True, null=True)
     pais = models.CharField(max_length=50, blank=True, null=True)
     ciudad = models.CharField(max_length=50, blank=True, null=True)
@@ -28,15 +36,24 @@ class Usuario(AbstractUser):
         null=True
     )
 
-    # Estadisticas globales
+    # Estadísticas globales
     total_relatos_publicados = models.PositiveIntegerField(default=0)
-    total_votos_recibidos = models.PositiveIntegerField(default=0)
-    total_palabras_escritas = models.PositiveIntegerField(default=0)
-    total_tiempo_escritura = models.PositiveIntegerField(default=0)  # en minutos
+    total_votos_recibidos    = models.PositiveIntegerField(default=0)
+    total_palabras_escritas  = models.PositiveIntegerField(default=0)
+    total_tiempo_escritura   = models.PositiveIntegerField(default=0)  # en minutos
 
-    # Métodos utilies
+    def save(self, *args, **kwargs):
+        # Forzar rol según flags de Django
+        if self.is_superuser:
+            self.rol = Usuario.ADMINISTRADOR
+        elif self.is_staff:
+            self.rol = Usuario.MODERADOR
+        else:
+            self.rol = Usuario.CLIENTE
+        super().save(*args, **kwargs)
+
+    # Métodos útiles (sin cambios)
     def amigos(self):
-        # Devuelve todos los usuarios con los que tengo amistad aceptada
         desde = Usuario.objects.filter(
             amistades_enviadas__a_usuario=self,
             amistades_enviadas__estado='ACEPTADA'
@@ -48,15 +65,12 @@ class Usuario(AbstractUser):
         return desde.union(hacia)
 
     def amistades_pendientes(self):
-        # Solicitudes que he enviado y están pendientes
         return self.amistades_enviadas.filter(estado='PENDIENTE')
 
     def amistades_por_responder(self):
-        # Solicitudes que me han enviado y aún no he aceptado
         return self.amistades_recibidas.filter(estado='PENDIENTE')
 
     def total_colaboraciones(self):
-        # Número de relatos donde he colaborado
         return self.relatos_colaborados.count()
 
     def __str__(self):
@@ -69,10 +83,32 @@ class Relato(models.Model):
         ('PUBLICADO', 'Publicado'),
     ]
 
+    IDIOMAS = [
+        ('en', 'Inglés'),
+        ('ru', 'Ruso'),
+        ('de', 'Alemán'),
+        ('ja', 'Japonés'),
+        ('es', 'Español'),
+    ]
+
+    GENERO = [
+        ('fantasia',      'Fantasía'),
+        ('ciencia_ficcion','Ciencia ficción'),
+        ('terror',        'Terror'),
+        ('romance',       'Romance'),
+        ('misterio',      'Misterio'),
+        ('thriller',      'Thriller'),
+        ('historico',     'Histórica'),
+        ('aventura',      'Aventura'),
+        ('poesia',        'Poesía'),
+        ('humor',         'Humor'),
+    ]
+
     titulo = models.CharField(max_length=100)
     descripcion = models.TextField()
     contenido = models.TextField(help_text="Contenido completo del relato (HTML desde CKEditor)",blank=True, null=True)
-    idioma = models.CharField(max_length=50)
+    idioma = models.CharField(max_length=5,choices=IDIOMAS,default='en',help_text='Selecciona el idioma principal del relato')
+    generos = models.CharField(max_length=20,choices=GENERO,blank=True,help_text='Selecciona el género principal del relato')
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='CREACION')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     num_escritores = models.PositiveSmallIntegerField(default=1)
@@ -115,7 +151,7 @@ class ParticipacionRelato(models.Model):
     contenido_fragmento = models.TextField(blank=True, null=True)
 
     # posicion del fragmento en el relato
-    orden = models.PositiveSmallIntegerField()
+    orden = models.PositiveIntegerField(default=1)
 
     listo_para_publicar = models.BooleanField(default=False)
     fecha_ultima_aportacion = models.DateTimeField(auto_now=True)

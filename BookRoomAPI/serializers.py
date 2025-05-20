@@ -48,16 +48,31 @@ class UsuarioSerializerRegistro(serializers.Serializer):
         return data
 
 class UsuarioLoginResponseSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Usuario
-        fields = ['id', 'username', 'email', 'avatar', 'pais', 'ciudad']
-class UsuarioSerializer(serializers.ModelSerializer):
-    # Serializa el campo avatar devolviendo la URL de la imagen
-    avatar = serializers.ImageField(read_only=True)
+    # Exponemos el valor numérico…
+    rol = serializers.IntegerField(read_only=True)
+    rol_nombre = serializers.CharField(source='get_rol_display', read_only=True)
 
     class Meta:
         model = Usuario
-        # Solo los campos que necesita el frontend
+        fields = [
+            'id',
+            'username',
+            'email',
+            'avatar',
+            'pais',
+            'ciudad',
+            'rol',
+            'rol_nombre',
+        ]
+class UsuarioSerializer(serializers.ModelSerializer):
+    # Serializa el campo avatar devolviendo la URL de la imagen
+    avatar = serializers.ImageField(read_only=True)
+    rol = serializers.IntegerField(read_only=True)
+    rol_nombre = serializers.CharField(source='get_rol_display', read_only=True)
+
+    class Meta:
+        model = Usuario
+        # Campos que necesita el frontend, ahora incluyendo rol y rol_nombre
         fields = [
             'id',
             'username',
@@ -71,8 +86,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'total_relatos_publicados',
             'total_votos_recibidos',
             'total_palabras_escritas',
+            'rol',
+            'rol_nombre',
         ]
-        # Opcionalmente, puedes marcar algunos campos como read_only:
         read_only_fields = [
             'id',
             'username',
@@ -81,6 +97,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'total_relatos_publicados',
             'total_votos_recibidos',
             'total_palabras_escritas',
+            'rol',
+            'rol_nombre',
         ]
 
 class LoginSerializer(serializers.Serializer):
@@ -154,17 +172,40 @@ class RelatoSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    # Campos de solo lectura para mostrar la etiqueta legible
+    idioma_display  = serializers.CharField(source='get_idioma_display', read_only=True)
+    generos_display = serializers.CharField(source='get_generos_display', read_only=True)
+
     class Meta:
         model = Relato
         fields = [
-            'id', 'titulo', 'descripcion', 'idioma', 'estado','contenido',
-            'fecha_creacion', 'num_escritores', 'autores', 'participaciones'
+            'id',
+            'titulo',
+            'descripcion',
+            'contenido',
+            'idioma',
+            'idioma_display',
+            'generos',
+            'generos_display',
+            'estado',
+            'fecha_creacion',
+            'num_escritores',
+            'autores',
+            'participaciones',
         ]
+
 
 class RelatoCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relato
-        fields = ['titulo', 'descripcion', 'contenido', 'idioma', 'num_escritores']
+        fields = [
+            'titulo',
+            'descripcion',
+            'contenido',
+            'idioma',
+            'generos',
+            'num_escritores'
+        ]
 
     def validate_titulo(self, value):
         if len(value) < 3:
@@ -172,22 +213,60 @@ class RelatoCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_descripcion(self, value):
-        if not value or len(value) < 10:
+        if len(value) < 10:
             raise serializers.ValidationError("La descripción debe tener al menos 10 caracteres.")
         return value
 
     def validate_num_escritores(self, value):
-        if value < 1 or value > 4:
+        if not (1 <= value <= 4):
             raise serializers.ValidationError("El número de escritores debe estar entre 1 y 4.")
         return value
+
+    def validate_generos(self, value):
+        # Opcional: valida que el valor esté en los choices
+        choices = dict(Relato.GENERO)
+        if value and value not in choices:
+            raise serializers.ValidationError("Género no válido.")
+        return value
+
 
 class RelatoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relato
-        fields = ['titulo', 'descripcion', 'contenido', 'idioma', 'estado']
+        fields = [
+            'titulo',
+            'descripcion',
+            'contenido',
+            'idioma',
+            'generos',
+            'estado'
+        ]
+
+    def validate_titulo(self, value):
+        if len(value) < 3:
+            raise serializers.ValidationError("El título debe tener al menos 3 caracteres.")
+        return value
+
+    def validate_descripcion(self, value):
+        if len(value) < 10:
+            raise serializers.ValidationError("La descripción debe tener al menos 10 caracteres.")
+        return value
+
+    def validate_idioma(self, value):
+        choices = dict(Relato.IDIOMAS)
+        if value not in choices:
+            raise serializers.ValidationError("Idioma no válido.")
+        return value
+
+    def validate_generos(self, value):
+        choices = dict(Relato.GENERO)
+        if value and value not in choices:
+            raise serializers.ValidationError("Género no válido.")
+        return value
 
     def validate_estado(self, value):
-        if value not in ['CREACION', 'EN_PROCESO', 'PUBLICADO']:
+        valid = [c[0] for c in Relato.ESTADO_CHOICES]
+        if value not in valid:
             raise serializers.ValidationError("Estado no válido.")
         return value
 

@@ -11,7 +11,6 @@ from datetime import timedelta
 from django.utils import timezone
 
 from django.contrib.auth import authenticate
-from django.contrib.auth.models import Group
 from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg.utils import swagger_auto_schema
@@ -22,6 +21,7 @@ from ..serializers import (
     UsuarioSerializerRegistro, UsuarioSerializer,
     UsuarioLoginResponseSerializer, LoginSerializer
 )
+from django.shortcuts import get_object_or_404
 
 #============================================================================================
 # AUTENTICACION Y REGISTRO
@@ -32,12 +32,7 @@ from ..serializers import (
     method='post',
     tags=["Registro y login"],
     operation_summary="Registro de usuario",
-    operation_description="""
-        Registra un nuevo usuario con rol CLIENTE.
-        - Crea el usuario
-        - Le asigna el grupo "Clientes"
-        - Devuelve un token OAuth2 válido por 10 horas
-    """,
+    operation_description="Registra un nuevo usuario con rol CLIENTE y devuelve un token OAuth2.",
     request_body=UsuarioSerializerRegistro,
     responses={
         201: "Usuario registrado correctamente",
@@ -48,12 +43,13 @@ from ..serializers import (
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def registrar_usuario(request):
-    # 1.1) Validar entrada
     serializer = UsuarioSerializerRegistro(data=request.data)
     if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Datos inválidos", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    # 1.2) Crear usuario con rol CLIENTE
     user = Usuario.objects.create_user(
         username=serializer.validated_data["username"],
         email=serializer.validated_data.get("email", ""),
@@ -61,20 +57,9 @@ def registrar_usuario(request):
         rol=Usuario.CLIENTE
     )
 
-    # 1.3) Asignar al grupo "Clientes" si existe
-    try:
-        grupo = Group.objects.get(name="Clientes")
-        grupo.user_set.add(user)
-    except Group.DoesNotExist:
-        pass
+    # Application uOAuth2 (404 si no existe)
+    app = get_object_or_404(Application, name="BookRoomAPI")
 
-    # 1.4) Recuperar aplicación OAuth2
-    try:
-        app = Application.objects.get(name="Angular App")
-    except Application.DoesNotExist:
-        return Response({"error": "Aplicación OAuth2 no encontrada."}, status=500)
-
-    # 1.5) Generar token y devolver respuesta
     token = AccessToken.objects.create(
         user=user,
         token=generate_token(),
@@ -82,10 +67,14 @@ def registrar_usuario(request):
         expires=timezone.now() + timedelta(hours=10),
         scope='read write'
     )
-    return Response({
-        "access_token": token.token,
-        "user": UsuarioSerializer(user).data
-    }, status=status.HTTP_201_CREATED)
+
+    return Response(
+        {
+            "access_token": token.token,
+            "user": UsuarioSerializer(user).data
+        },
+        status=status.HTTP_201_CREATED
+    )
 
 
 # 2) OBTENER USUARIO POR TOKEN
@@ -99,21 +88,25 @@ def registrar_usuario(request):
     ],
     responses={
         200: openapi.Response(description="Usuario encontrado"),
-        404: openapi.Response(description="Token o usuario no encontrado")
+        401: openapi.Response(description="Token no válido o expirado"),
+        404: openapi.Response(description="Usuario no encontrado")
     }
 )
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def obtener_usuario_por_token(request, token):
-    # 2.1) Buscar AccessToken
-    try:
-        access_token = AccessToken.objects.get(token=token)
-        usuario = Usuario.objects.get(id=access_token.user_id)
-    except AccessToken.DoesNotExist:
-        return Response({"error": "Token no válido."}, status=status.HTTP_404_NOT_FOUND)
-    except Usuario.DoesNotExist:
-        return Response({"error": "Usuario no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    # 1) Buscar el AccessToken y verificar que no esté expirado
+    access_token = AccessToken.objects.filter(token=token).first()
+    if not access_token or access_token.expires <= timezone.now():
+        return Response(
+            {"error": "Token no válido o expirado."},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
 
-    # 2.2) Serializar y devolver usuario
+    # 2) Recuperar usuario asociado
+    usuario = get_object_or_404(Usuario, id=access_token.user_id)
+
+    # 3) Serializar y devolver
     return Response(UsuarioSerializer(usuario).data, status=status.HTTP_200_OK)
 
 
@@ -126,28 +119,33 @@ def obtener_usuario_por_token(request, token):
     operation_description="Autentica credenciales y devuelve un token OAuth2.",
     responses={
         200: "Login correcto",
-        400: "Credenciales inválidas",
-        500: "Error del servidor"
+        401: "Credenciales inválidas",
+        404: "Aplicación OAuth2 no encontrada"
     }
 )
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_usuario(request):
-    # 3.1) Autenticar con Django
-    user = authenticate(
-        username=request.data.get("username"),
-        password=request.data.get("password")
-    )
+    # 1) Validar datos de entrada
+    serializer = LoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    username = serializer.validated_data["username"]
+    password = serializer.validated_data["password"]
+
+    # 2) Autenticar con Django
+    user = authenticate(username=username, password=password)
     if user is None:
-        return Response({"error": "Credenciales inválidas."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Credenciales inválidas."}, status=status.HTTP_401_UNAUTHORIZED)
 
-    # 3.2) Recuperar o crear token vigente
-    try:
-        app = Application.objects.get(name="Angular App")
-    except Application.DoesNotExist:
-        return Response({"error": "Aplicación OAuth2 no encontrada."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # 3) Recuperar la aplicación OAuth2 o 404
+    app = get_object_or_404(Application, name="BookRoomAPI")
 
-    token = AccessToken.objects.filter(user=user, application=app, expires__gt=timezone.now()).first()
+    # 4) Recuperar o crear token vigente
+    token = AccessToken.objects.filter(
+        user=user,
+        application=app,
+        expires__gt=timezone.now()
+    ).first()
     if not token:
         token = AccessToken.objects.create(
             user=user,
@@ -157,7 +155,7 @@ def login_usuario(request):
             scope='read write'
         )
 
-    # 3.3) Devolver token y datos de usuario
+    # 5) Devolver token y datos del usuario
     return Response({
         "access_token": token.token,
         "user": UsuarioLoginResponseSerializer(user).data
@@ -169,14 +167,21 @@ def login_usuario(request):
     method='post',
     tags=["Registro y login"],
     operation_summary="Logout de usuario",
-    operation_description="Elimina el token actual, cerrando sesión.",
-    responses={200: "Sesión cerrada correctamente", 401: "Token inválido"}
+    operation_description="Elimina el token OAuth2 actual y cierra la sesión.",
+    responses={
+        200: openapi.Response(description="Sesión cerrada correctamente"),
+        401: openapi.Response(description="Token inválido o expirado")
+    }
 )
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_usuario(request):
-    # 4.1) Borrar el token del usuario
-    if request.auth:
-        request.auth.delete()
-    # 4.2) Confirmar cierre de sesión
-    return Response({"mensaje": "Sesión cerrada correctamente."}, status=status.HTTP_200_OK)
+    # Si no viene autenticación por token, devolvemos 401
+    if not getattr(request, 'auth', None):
+        return Response({"error": "Token no válido o expirado."},
+                        status=status.HTTP_401_UNAUTHORIZED)
+
+    # Borrar el token OAuth2
+    request.auth.delete()
+    return Response({"mensaje": "Sesión cerrada correctamente."},
+                    status=status.HTTP_200_OK)
