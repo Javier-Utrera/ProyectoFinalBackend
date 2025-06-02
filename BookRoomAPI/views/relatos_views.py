@@ -223,18 +223,19 @@ def api_eliminar_relato(request, relato_id):
     relato.delete()
     return Response({"mensaje": "Relato eliminado correctamente."})
 
-
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 class RelatosDisponiblesList(generics.ListAPIView):
     """
-    Listar relatos en CREACION con plazas libres. Requiere autenticación.
+    Listar relatos en CREACION con plazas libres. Público en lectura, 
+    sólo requiere auth para futuros métodos de escritura.
     """
-    serializer_class = RelatoSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = RelatoFilter
-    search_fields = ['titulo', 'descripcion']
-    ordering_fields = ['fecha_creacion', 'num_escritores', 'titulo']
-    ordering = ['-fecha_creacion']
+    serializer_class   = RelatoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends    = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class    = RelatoFilter
+    search_fields      = ['titulo', 'descripcion']
+    ordering_fields    = ['fecha_creacion', 'num_escritores', 'titulo']
+    ordering           = ['-fecha_creacion']
 
     def get_queryset(self):
         return (
@@ -246,7 +247,7 @@ class RelatosDisponiblesList(generics.ListAPIView):
 
     @swagger_auto_schema(
         operation_summary="Listar relatos disponibles",
-        operation_description="Devuelve listado de relatos en creación con plazas libres.",
+        operation_description="Devuelve listado de relatos en creación con plazas libres. Público.",
         responses={200: openapi.Response(
             description="Listado de relatos disponibles",
             schema=RelatoSerializer(many=True)

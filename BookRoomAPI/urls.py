@@ -69,6 +69,8 @@ urlpatterns = [
     path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/quitar-voto/',api_quitar_voto_comentario,name='quitar-voto-comentario'),
     path('relatos/<int:relato_id>/comentarios/<int:comentario_id>/voto/',api_eliminar_voto_comentario,name='eliminar-voto-comentario'),
 
+        #Mesanjes en la pagina de escribir el relato
+    path('relatos/<int:relato_id>/mensajes/', MensajesRelatoList.as_view(), name='mensajes-relato'),
     #VOTOS----------------------------------------------------------------------------------------
     path('relatos/<int:relato_id>/votar/', api_votar_relato, name='votar-relato'),
     path('relatos/<int:relato_id>/mi-voto/', api_mi_voto_relato, name='mi-voto-relato'),
@@ -77,5 +79,4 @@ urlpatterns = [
     path('estadisticas/relatos/<int:relato_id>/', api_estadisticas_relato, name='estadisticas-relato'),
     path('estadisticas/', api_listar_estadisticas, name='listar-estadisticas'),
     path('ranking-usuarios/', ranking_usuarios, name='ranking-usuarios'),
-
 ]

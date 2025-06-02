@@ -7,7 +7,6 @@ class UsuarioAdminPersonalizado(UserAdmin):
     list_display = ['username', 'email', 'rol', 'is_staff', 'is_superuser']
     list_filter  = ['rol', 'is_staff', 'is_superuser', 'is_active']
 
-    # Añade 'avatar' (y otros campos tuyos) al form de edición
     fieldsets = UserAdmin.fieldsets + (
         ('Perfil adicional', {
             'fields': (
@@ -22,7 +21,6 @@ class UsuarioAdminPersonalizado(UserAdmin):
         }),
     )
 
-    # Añade 'avatar' al form de creación de usuarios
     add_fieldsets = UserAdmin.add_fieldsets + (
         ('Perfil adicional', {
             'classes': ('wide',),

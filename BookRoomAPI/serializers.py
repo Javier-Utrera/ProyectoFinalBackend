@@ -371,3 +371,10 @@ class UsuarioRankingSerializer(serializers.ModelSerializer):
             'total_votos_recibidos',
             'total_palabras_escritas',
         ]
+
+#MENSAJE----------------------------------------------------------------------------------------
+class MensajeSerializer(serializers.ModelSerializer):
+    autor = serializers.StringRelatedField()
+    class Meta:
+        model = Mensaje
+        fields = ['id', 'autor', 'texto', 'fecha_envio']

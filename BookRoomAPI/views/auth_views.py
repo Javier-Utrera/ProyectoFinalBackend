@@ -1,8 +1,9 @@
-from rest_framework import status
+from rest_framework import status,generics, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
-
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
 
 from oauth2_provider.models import Application, AccessToken
 from oauthlib.common import generate_token
@@ -16,10 +17,10 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from ..models import Usuario
+from ..models import Usuario,Mensaje,Relato
 from ..serializers import (
     UsuarioSerializerRegistro, UsuarioSerializer,
-    UsuarioLoginResponseSerializer, LoginSerializer
+    UsuarioLoginResponseSerializer, LoginSerializer,MensajeSerializer
 )
 from django.shortcuts import get_object_or_404
 
@@ -185,3 +186,24 @@ def logout_usuario(request):
     request.auth.delete()
     return Response({"mensaje": "Sesión cerrada correctamente."},
                     status=status.HTTP_200_OK)
+
+class MensajesRelatoList(generics.ListAPIView):
+    """
+    Lista paginada de mensajes de un relato concreto.
+    Sólo usuarios autenticados pueden ver el historial.
+    """
+    serializer_class = MensajeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        relato_id = self.kwargs['relato_id']
+        # 1) Obtener el relato o 404
+        relato = get_object_or_404(Relato, id=relato_id)
+
+        # 2) Validar que el usuario es uno de los autores (colaboradores)
+        if not relato.autores.filter(id=self.request.user.id).exists():
+            raise PermissionDenied("No tienes permiso para ver los mensajes de este relato.")
+
+        # 3) Devolver los mensajes ordenados por fecha
+        return Mensaje.objects.filter(relato=relato).order_by('fecha_envio')

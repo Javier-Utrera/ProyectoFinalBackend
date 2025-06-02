@@ -6,8 +6,8 @@ class EsPropietarioOModerador(permissions.BasePermission):
     SAFE_METHODS siempre True.
     EDIT/DELETE permitido si:
       - request.user.rol es ADMINISTRADOR o MODERADOR.
-      - o bien eres propietario del objeto:
-          * Relato: estás en obj.autores (y para DELETE solo si eres único autor).
+      - o bien soy propietario del objeto:
+          * Relato: estoy en obj.autores 
           * ParticipacionRelato/Comentario: obj.usuario == request.user.
     """
 

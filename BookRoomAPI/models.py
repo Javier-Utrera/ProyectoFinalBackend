@@ -14,7 +14,6 @@ class Usuario(AbstractUser):
         (MODERADOR,     "moderador"),
         (CLIENTE,       "cliente"),
     )
-
     rol = models.PositiveSmallIntegerField(choices=ROLES, default=CLIENTE)
 
     # Datos personales
@@ -299,3 +298,12 @@ class Factura(models.Model):
 
     def __str__(self):
         return f"Factura de {self.suscripcion.usuario.username} - {self.total}€"
+    
+class Mensaje(models.Model):
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    relato = models.ForeignKey(Relato, on_delete=models.CASCADE, related_name='mensajes')
+    texto = models.TextField()
+    fecha_envio = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.autor.username} @ {self.fecha_envio}: {self.texto[:20]}…"
