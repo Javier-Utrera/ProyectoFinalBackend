@@ -1,4 +1,7 @@
 from django.urls import path
+
+from BookRoomAPI.views_google import GoogleLoginAPIView
+from BookRoomAPI.views_paypal import capturar_y_crear_suscripcion, crear_orden_paypal
 from . import views
 from .views import *
 
@@ -79,4 +82,9 @@ urlpatterns = [
     path('estadisticas/relatos/<int:relato_id>/', api_estadisticas_relato, name='estadisticas-relato'),
     path('estadisticas/', api_listar_estadisticas, name='listar-estadisticas'),
     path('ranking-usuarios/', ranking_usuarios, name='ranking-usuarios'),
+
+    path('auth/google-login/', GoogleLoginAPIView.as_view(), name='google-login'),
+
+    path('paypal/crear-orden/', crear_orden_paypal, name='crear-orden-paypal'),
+    path('paypal/capturar-y-suscribirse/', capturar_y_crear_suscripcion, name='capturar_y_crear_suscripcion'),
 ]

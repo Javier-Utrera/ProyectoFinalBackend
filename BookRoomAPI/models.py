@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from cloudinary_storage.storage import MediaCloudinaryStorage
+from django.utils import timezone
+from datetime import timedelta
 avatar_storage = MediaCloudinaryStorage()
 # Create your models here.
 class Usuario(AbstractUser):
@@ -39,7 +41,7 @@ class Usuario(AbstractUser):
     total_relatos_publicados = models.PositiveIntegerField(default=0)
     total_votos_recibidos    = models.PositiveIntegerField(default=0)
     total_palabras_escritas  = models.PositiveIntegerField(default=0)
-    total_tiempo_escritura   = models.PositiveIntegerField(default=0)  # en minutos
+    total_tiempo_escritura   = models.PositiveIntegerField(default=0)
 
     def save(self, *args, **kwargs):
         # Forzar rol según flags de Django
@@ -71,6 +73,40 @@ class Usuario(AbstractUser):
 
     def total_colaboraciones(self):
         return self.relatos_colaborados.count()
+    
+    def suscripcion_activa(self):
+        return self.suscripciones.filter(activa=True).order_by('-fecha_inicio').first()
+
+    # método para validar creación de relato
+    def puede_crear_relato(self):
+        suscripcion = self.suscripcion_activa()
+
+        if suscripcion and suscripcion.tipo == 'PREMIUM':
+            return True  # Premium no tiene restricciones
+
+        # Contar relatos creados en la última semana
+        inicio_semana = timezone.now() - timedelta(days=7)
+        relatos_creados = Relato.objects.filter(
+            fecha_creacion__gte=inicio_semana,
+            autores=self
+        ).count()
+
+        return relatos_creados < 1  # máximo uno por semana
+
+    # método para validar participación en relatos
+    def puede_participar_en_relato(self):
+        suscripcion = self.suscripcion_activa()
+
+        if suscripcion and suscripcion.tipo == 'PREMIUM':
+            return True  # Premium ilimitado
+
+        inicio_semana = timezone.now() - timedelta(days=7)
+        participaciones_semana = ParticipacionRelato.objects.filter(
+            usuario=self,
+            fecha_ultima_aportacion__gte=inicio_semana
+        ).count()
+
+        return participaciones_semana < 2  # máximo dos por semana
 
     def __str__(self):
         return self.username
@@ -295,6 +331,8 @@ class Factura(models.Model):
     )
     total = models.DecimalField(max_digits=8, decimal_places=2)
     fecha = models.DateTimeField(auto_now_add=True)
+
+    pdf_url = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return f"Factura de {self.suscripcion.usuario.username} - {self.total}€"

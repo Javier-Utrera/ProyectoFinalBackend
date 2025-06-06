@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from ..models import Usuario,Mensaje,Relato
+from ..models import Suscripcion, Usuario,Mensaje,Relato
 from ..serializers import (
     UsuarioSerializerRegistro, UsuarioSerializer,
     UsuarioLoginResponseSerializer, LoginSerializer,MensajeSerializer
@@ -51,6 +51,7 @@ def registrar_usuario(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 1) Crear el usuario
     user = Usuario.objects.create_user(
         username=serializer.validated_data["username"],
         email=serializer.validated_data.get("email", ""),
@@ -58,9 +59,18 @@ def registrar_usuario(request):
         rol=Usuario.CLIENTE
     )
 
-    # Application uOAuth2 (404 si no existe)
-    app = get_object_or_404(Application, name="BookRoomAPI")
+    # 2) Crear automáticamente su suscripción FREE
+    #    La dejamos sin fecha_fin para que sea “indefinida” mientras está activa.
+    Suscripcion.objects.create(
+        usuario=user,
+        tipo='FREE',
+        activa=True,
+        fecha_inicio=timezone.now(),
+        fecha_fin=None
+    )
 
+    # 3) Generar token OAuth2 (igual que antes)
+    app = get_object_or_404(Application, name="BookRoomAPI")
     token = AccessToken.objects.create(
         user=user,
         token=generate_token(),

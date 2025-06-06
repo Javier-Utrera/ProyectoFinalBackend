@@ -1,5 +1,3 @@
-from datetime import timedelta
-from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, F
 from django.shortcuts import get_object_or_404
@@ -130,15 +128,33 @@ def api_ver_relato_publicado(request, relato_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_crear_relato(request):
+    usuario = request.user
+
+    # 1) Comprueba si el usuario FREE puede crear un nuevo relato esta semana
+    if not usuario.puede_crear_relato():
+        return Response(
+            {"error": "Has alcanzado el límite semanal de creación de relatos (1 relato/semana para usuarios FREE)."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 2) Si puede, procedemos con la creación normal
     serializer = RelatoCreateSerializer(data=request.data)
     if not serializer.is_valid():
         return api_errores(serializer)
+
     with transaction.atomic():
         relato = serializer.save()
+        # Inicializamos estadística y participación del autor
         Estadistica.objects.create(relato=relato)
-        ParticipacionRelato.objects.create(usuario=request.user, relato=relato, orden=1, contenido_fragmento='')
+        ParticipacionRelato.objects.create(
+            usuario=usuario,
+            relato=relato,
+            orden=1,
+            contenido_fragmento=''
+        )
         relato.comprobar_estado_y_actualizar()
         actualizar_estadisticas(relato)
+
     return Response({"mensaje": "Relato creado correctamente."}, status=status.HTTP_201_CREATED)
 
 
@@ -267,17 +283,30 @@ class RelatosDisponiblesList(generics.ListAPIView):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_unirse_a_relato(request, relato_id):
+    usuario = request.user
+
+    # 1) Comprueba si el usuario FREE puede participar en un nuevo relato esta semana
+    if not usuario.puede_participar_en_relato():
+        return Response(
+            {"error": "Has alcanzado el límite semanal de participación (2 participaciones/semana para usuarios FREE)."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 2) Lógica de chequear estado y plazas
     relato = get_object_or_404(Relato, pk=relato_id)
     if relato.estado != 'CREACION':
         return Response({"error": "No acepta más escritores."}, status=status.HTTP_400_BAD_REQUEST)
-    if relato.autores.filter(pk=request.user.pk).exists():
+    if relato.autores.filter(pk=usuario.pk).exists():
         return Response({"mensaje": "Ya participas en este relato."}, status=status.HTTP_200_OK)
     if relato.autores.count() >= relato.num_escritores:
         return Response({"error": "Máximo de escritores alcanzado."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 3) Si cumple todo, se crea la participación
     orden = relato.autores.count() + 1
-    ParticipacionRelato.objects.create(usuario=request.user, relato=relato, orden=orden)
+    ParticipacionRelato.objects.create(usuario=usuario, relato=relato, orden=orden)
     relato.comprobar_estado_y_actualizar()
     actualizar_estadisticas(relato)
+
     return Response({"mensaje": "Te has unido correctamente al relato."}, status=status.HTTP_201_CREATED)
 
 

@@ -3,6 +3,17 @@ from rest_framework import serializers
 from .models import *
 import re
 
+class SuscripcionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Suscripcion
+        fields = [
+            'tipo',         # 'FREE' o 'PREMIUM'
+            'activa',       # True/False
+            'fecha_inicio', # DateTime
+            'fecha_fin',    # DateTime o null
+        ]
+        read_only_fields = fields
+
 class UsuarioSerializerRegistro(serializers.Serializer):
     username = serializers.CharField(default="usuario123")
     email = serializers.EmailField(default="correo@gmail.com")
@@ -70,9 +81,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
     rol = serializers.IntegerField(read_only=True)
     rol_nombre = serializers.CharField(source='get_rol_display', read_only=True)
 
+    # 1) Suscripción activa (anidada)
+    suscripcion = SuscripcionSerializer(
+        source='suscripcion_activa',  # usa el método del modelo
+        read_only=True
+    )
+
+    # 2) Contadores semanales
+    relatos_creados_semana = serializers.SerializerMethodField()
+    participaciones_semana = serializers.SerializerMethodField()
+
     class Meta:
         model = Usuario
-        # Campos que necesita el frontend, ahora incluyendo rol y rol_nombre
         fields = [
             'id',
             'username',
@@ -88,6 +108,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'total_palabras_escritas',
             'rol',
             'rol_nombre',
+
+            'suscripcion',
+            'relatos_creados_semana',
+            'participaciones_semana',
         ]
         read_only_fields = [
             'id',
@@ -99,7 +123,33 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'total_palabras_escritas',
             'rol',
             'rol_nombre',
+            'suscripcion',
+            'relatos_creados_semana',
+            'participaciones_semana',
         ]
+
+    def get_relatos_creados_semana(self, obj):
+        """
+        Cuenta cuántos relatos *creó* este usuario en los últimos 7 días:
+        ParticipacionRelato con orden=1 y relato.fecha_creacion >= hace 7 días.
+        """
+        inicio_semana = timezone.now() - timedelta(days=7)
+        return ParticipacionRelato.objects.filter(
+            usuario=obj,
+            orden=1,
+            relato__fecha_creacion__gte=inicio_semana
+        ).count()
+
+    def get_participaciones_semana(self, obj):
+        """
+        Cuenta cuántas participaciones (ParticipacionRelato) de este usuario
+        tienen fecha_ultima_aportacion en los últimos 7 días.
+        """
+        inicio_semana = timezone.now() - timedelta(days=7)
+        return ParticipacionRelato.objects.filter(
+            usuario=obj,
+            fecha_ultima_aportacion__gte=inicio_semana
+        ).count()
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(default="usuario123")
