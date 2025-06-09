@@ -7,3 +7,4 @@ from .comentarios_views import *
 from .votos_views import *
 from .estadisticas_views import *
 from .home_views import *
+from .administrador_views import *

@@ -86,9 +86,11 @@ class Usuario(AbstractUser):
 
         # Contar relatos creados en la última semana
         inicio_semana = timezone.now() - timedelta(days=7)
-        relatos_creados = Relato.objects.filter(
-            fecha_creacion__gte=inicio_semana,
-            autores=self
+        # Filtrar por relatos creados por el usuario en la última semana
+        relatos_creados = ParticipacionRelato.objects.filter(
+            usuario=self,
+            orden=1,
+            relato__fecha_creacion__gte=inicio_semana
         ).count()
 
         return relatos_creados < 1  # máximo uno por semana

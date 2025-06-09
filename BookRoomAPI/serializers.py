@@ -43,15 +43,15 @@ class UsuarioSerializerRegistro(serializers.Serializer):
 
         if password1 != password2:
             errores["password"] = "Las contraseñas no coinciden."
-        # else:
-        #     if len(password1) < 8:
-        #         errores["password"] = "La contraseña debe tener al menos 8 caracteres."
-        #     elif not re.search(r"[A-Z]", password1):
-        #         errores["password"] = "La contraseña debe contener al menos una letra mayúscula."
-        #     elif not re.search(r"[a-z]", password1):
-        #         errores["password"] = "La contraseña debe contener al menos una letra minúscula."
-        #     elif not re.search(r"[0-9]", password1):
-        #         errores["password"] = "La contraseña debe contener al menos un número."
+        else:
+            if len(password1) < 8:
+                errores["password"] = "La contraseña debe tener al menos 8 caracteres."
+            elif not re.search(r"[A-Z]", password1):
+                errores["password"] = "La contraseña debe contener al menos una letra mayúscula."
+            elif not re.search(r"[a-z]", password1):
+                errores["password"] = "La contraseña debe contener al menos una letra minúscula."
+            elif not re.search(r"[0-9]", password1):
+                errores["password"] = "La contraseña debe contener al menos un número."
 
         if errores:
             raise serializers.ValidationError(errores)
@@ -158,16 +158,30 @@ class LoginSerializer(serializers.Serializer):
 #PERFIL----------------------------------------------------------------------------------------
 class UsuarioUpdateSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = Usuario
         fields = [
             'biografia', 'fecha_nacimiento', 'pais',
-            'ciudad', 'generos_favoritos','avatar', 
+            'ciudad', 'generos_favoritos', 'avatar',
         ]
 
+    def validar_campo_texto(self, valor, nombre_campo, regex=r'^[A-Za-záéíóúÁÉÍÓÚñÑ ]+$'):
+        import re
+        if valor and not re.match(regex, valor):
+            raise serializers.ValidationError(f"El campo {nombre_campo} contiene caracteres inválidos.")
+        return valor
+
     def validate_biografia(self, value):
-        if value and len(value) > 500:
-            raise serializers.ValidationError("La biografía no puede superar los 500 caracteres.")
+        if value:
+            if len(value) > 500:
+                raise serializers.ValidationError("La biografía no puede superar los 500 caracteres.")
+            # Aquí permitimos letras, espacios y algunos signos básicos
+            return self.validar_campo_texto(
+                value,
+                "biografía",
+                regex=r'^[A-Za-záéíóúÁÉÍÓÚñÑ0-9 .,;:!?¡¿"\n\'\-()]+$'
+            )
         return value
 
     def validate_fecha_nacimiento(self, value):
@@ -175,12 +189,6 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
         if value and value > date.today():
             raise serializers.ValidationError("La fecha de nacimiento no puede ser en el futuro.")
         return value
-
-    def validar_campo_texto(self, valor, nombre_campo):
-        import re
-        if valor and not re.match(r'^[A-Za-záéíóúÁÉÍÓÚñÑ ]+$', valor):
-            raise serializers.ValidationError(f"El campo {nombre_campo} contiene caracteres inválidos.")
-        return valor
 
     def validate_pais(self, value):
         return self.validar_campo_texto(value, "país")
@@ -428,3 +436,6 @@ class MensajeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mensaje
         fields = ['id', 'autor', 'texto', 'fecha_envio']
+
+
+#ADMINISTRADOR----------------------------------------------------------------------------------------

@@ -1,6 +1,8 @@
-from rest_framework import status,generics, permissions
+# views/auth.py
+
+from rest_framework import status, generics, permissions
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
@@ -12,31 +14,34 @@ from datetime import timedelta
 from django.utils import timezone
 
 from django.contrib.auth import authenticate
-from rest_framework.permissions import IsAuthenticated
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from ..models import Suscripcion, Usuario,Mensaje,Relato
+from ..models import Suscripcion, Usuario, Mensaje, Relato
 from ..serializers import (
     UsuarioSerializerRegistro, UsuarioSerializer,
-    UsuarioLoginResponseSerializer, LoginSerializer,MensajeSerializer
+    UsuarioLoginResponseSerializer, LoginSerializer, MensajeSerializer
 )
-from django.shortcuts import get_object_or_404
-
-#============================================================================================
-# AUTENTICACION Y REGISTRO
-#============================================================================================
 
 # 1) REGISTRAR USUARIO
 @swagger_auto_schema(
     method='post',
     tags=["Registro y login"],
-    operation_summary="Registro de usuario",
-    operation_description="Registra un nuevo usuario con rol CLIENTE y devuelve un token OAuth2.",
     request_body=UsuarioSerializerRegistro,
     responses={
-        201: "Usuario registrado correctamente",
+        201: openapi.Response(
+            description="Usuario registrado correctamente",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'mensaje': openapi.Schema(type=openapi.TYPE_STRING),
+                    'access_token': openapi.Schema(type=openapi.TYPE_STRING),
+                    'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    'tipo': openapi.Schema(type=openapi.TYPE_STRING),
+                }
+            )
+        ),
         400: "Errores de validación",
         500: "Error interno al generar el token"
     }
@@ -51,7 +56,6 @@ def registrar_usuario(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 1) Crear el usuario
     user = Usuario.objects.create_user(
         username=serializer.validated_data["username"],
         email=serializer.validated_data.get("email", ""),
@@ -59,8 +63,6 @@ def registrar_usuario(request):
         rol=Usuario.CLIENTE
     )
 
-    # 2) Crear automáticamente su suscripción FREE
-    #    La dejamos sin fecha_fin para que sea “indefinida” mientras está activa.
     Suscripcion.objects.create(
         usuario=user,
         tipo='FREE',
@@ -69,7 +71,6 @@ def registrar_usuario(request):
         fecha_fin=None
     )
 
-    # 3) Generar token OAuth2 (igual que antes)
     app = get_object_or_404(Application, name="BookRoomAPI")
     token = AccessToken.objects.create(
         user=user,
@@ -81,8 +82,10 @@ def registrar_usuario(request):
 
     return Response(
         {
+            "mensaje": "Usuario registrado correctamente. Bienvenido/a " + f"{user.username}",
             "access_token": token.token,
-            "user": UsuarioSerializer(user).data
+            "user": UsuarioSerializer(user).data,
+            "tipo": "success"
         },
         status=status.HTTP_201_CREATED
     )
@@ -92,21 +95,16 @@ def registrar_usuario(request):
 @swagger_auto_schema(
     method='get',
     tags=["Registro y login"],
-    operation_summary="Obtener usuario por token",
-    operation_description="Devuelve la información del usuario asociado a un token OAuth2.",
-    manual_parameters=[
-        openapi.Parameter('token', openapi.IN_PATH, type=openapi.TYPE_STRING, required=True)
-    ],
+    manual_parameters=[openapi.Parameter('token', openapi.IN_PATH, type=openapi.TYPE_STRING)],
     responses={
-        200: openapi.Response(description="Usuario encontrado"),
-        401: openapi.Response(description="Token no válido o expirado"),
-        404: openapi.Response(description="Usuario no encontrado")
+        200: openapi.Response(description="Usuario encontrado", schema=UsuarioSerializer()),
+        401: "Token no válido o expirado",
+        404: "Usuario no encontrado"
     }
 )
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def obtener_usuario_por_token(request, token):
-    # 1) Buscar el AccessToken y verificar que no esté expirado
     access_token = AccessToken.objects.filter(token=token).first()
     if not access_token or access_token.expires <= timezone.now():
         return Response(
@@ -114,10 +112,7 @@ def obtener_usuario_por_token(request, token):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
-    # 2) Recuperar usuario asociado
     usuario = get_object_or_404(Usuario, id=access_token.user_id)
-
-    # 3) Serializar y devolver
     return Response(UsuarioSerializer(usuario).data, status=status.HTTP_200_OK)
 
 
@@ -126,10 +121,19 @@ def obtener_usuario_por_token(request, token):
     method='post',
     tags=["Registro y login"],
     request_body=LoginSerializer,
-    operation_summary="Login de usuario",
-    operation_description="Autentica credenciales y devuelve un token OAuth2.",
     responses={
-        200: "Login correcto",
+        200: openapi.Response(
+            description="Login correcto",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'mensaje': openapi.Schema(type=openapi.TYPE_STRING),
+                    'access_token': openapi.Schema(type=openapi.TYPE_STRING),
+                    'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    'tipo': openapi.Schema(type=openapi.TYPE_STRING),
+                }
+            )
+        ),
         401: "Credenciales inválidas",
         404: "Aplicación OAuth2 no encontrada"
     }
@@ -137,21 +141,16 @@ def obtener_usuario_por_token(request, token):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_usuario(request):
-    # 1) Validar datos de entrada
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     username = serializer.validated_data["username"]
     password = serializer.validated_data["password"]
 
-    # 2) Autenticar con Django
     user = authenticate(username=username, password=password)
     if user is None:
         return Response({"error": "Credenciales inválidas."}, status=status.HTTP_401_UNAUTHORIZED)
 
-    # 3) Recuperar la aplicación OAuth2 o 404
     app = get_object_or_404(Application, name="BookRoomAPI")
-
-    # 4) Recuperar o crear token vigente
     token = AccessToken.objects.filter(
         user=user,
         application=app,
@@ -166,10 +165,11 @@ def login_usuario(request):
             scope='read write'
         )
 
-    # 5) Devolver token y datos del usuario
     return Response({
+        "mensaje": "Login correcto. Bienvenido/a." + f" {user.username}",
         "access_token": token.token,
-        "user": UsuarioLoginResponseSerializer(user).data
+        "user": UsuarioLoginResponseSerializer(user).data,
+        "tipo": "success"
     }, status=status.HTTP_200_OK)
 
 
@@ -177,43 +177,40 @@ def login_usuario(request):
 @swagger_auto_schema(
     method='post',
     tags=["Registro y login"],
-    operation_summary="Logout de usuario",
-    operation_description="Elimina el token OAuth2 actual y cierra la sesión.",
     responses={
-        200: openapi.Response(description="Sesión cerrada correctamente"),
-        401: openapi.Response(description="Token inválido o expirado")
+        200: openapi.Response(
+            description="Sesión cerrada correctamente",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'mensaje': openapi.Schema(type=openapi.TYPE_STRING),
+                    'tipo': openapi.Schema(type=openapi.TYPE_STRING),
+                }
+            )
+        ),
+        401: "Token inválido o expirado"
     }
 )
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_usuario(request):
-    # Si no viene autenticación por token, devolvemos 401
     if not getattr(request, 'auth', None):
         return Response({"error": "Token no válido o expirado."},
                         status=status.HTTP_401_UNAUTHORIZED)
-
-    # Borrar el token OAuth2
     request.auth.delete()
-    return Response({"mensaje": "Sesión cerrada correctamente."},
+    return Response({"mensaje": "Sesión cerrada correctamente.", "tipo": "success"},
                     status=status.HTTP_200_OK)
 
+
+# 5) Mensajes de un relato (no devuelve pop-ups)
 class MensajesRelatoList(generics.ListAPIView):
-    """
-    Lista paginada de mensajes de un relato concreto.
-    Sólo usuarios autenticados pueden ver el historial.
-    """
-    serializer_class = MensajeSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    pagination_class = None
+    serializer_class    = MensajeSerializer
+    permission_classes  = [permissions.IsAuthenticated]
+    pagination_class    = None
 
     def get_queryset(self):
         relato_id = self.kwargs['relato_id']
-        # 1) Obtener el relato o 404
         relato = get_object_or_404(Relato, id=relato_id)
-
-        # 2) Validar que el usuario es uno de los autores (colaboradores)
         if not relato.autores.filter(id=self.request.user.id).exists():
             raise PermissionDenied("No tienes permiso para ver los mensajes de este relato.")
-
-        # 3) Devolver los mensajes ordenados por fecha
         return Mensaje.objects.filter(relato=relato).order_by('fecha_envio')

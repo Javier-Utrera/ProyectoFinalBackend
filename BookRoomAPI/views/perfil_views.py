@@ -1,3 +1,4 @@
+import traceback
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import api_view, permission_classes, parser_classes
@@ -18,21 +19,31 @@ from ..serializers import UsuarioSerializer, UsuarioUpdateSerializer
     tags=["Perfil"],
     operation_summary="Obtener perfil del usuario",
     operation_description="Devuelve los datos del usuario actualmente autenticado.",
-    responses={200: UsuarioSerializer(), 401: "Token no válido"}
+    responses={
+        200: UsuarioSerializer(),
+        401: "Token no válido"
+    }
 )
 @swagger_auto_schema(
     method='patch',
     tags=["Perfil"],
     operation_summary="Editar perfil del usuario",
     operation_description="""
-        Permite modificar:
-        - Biografía (máx. 500 caracteres)
-        - Fecha de nacimiento (no futura)
-        - País, ciudad (solo letras y espacios)
-        - Géneros favoritos (texto separado por comas)
+Permite modificar los siguientes campos del perfil:
+
+- **Biografía**: máximo 500 caracteres.
+- **Fecha de nacimiento**: no puede ser futura.
+- **País y ciudad**: solo letras y espacios.
+- **Géneros favoritos**: texto separado por comas.
+- **Avatar**: archivo de imagen válido (opcional).
     """,
     request_body=UsuarioUpdateSerializer,
-    responses={200: "Perfil actualizado", 400: "Errores de validación", 401: "Token no válido"}
+    responses={
+        200: "Perfil actualizado",
+        400: "Errores de validación",
+        401: "Token no válido",
+        500: "Error interno al guardar cambios (p. ej. fallo al subir imagen)"
+    }
 )
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
@@ -51,7 +62,19 @@ def obtener_perfil(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    serializer.save()
+    try:
+        serializer.save()
+    except Exception as e:
+        print("Error al guardar perfil:")
+        print(traceback.format_exc())
+        return Response(
+            {
+                'error': 'Error al guardar los datos del perfil.',
+                'detalle': str(e)
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
     # 4) Confirmar actualización
     return Response({'mensaje': 'Perfil actualizado correctamente'}, status=status.HTTP_200_OK)
 

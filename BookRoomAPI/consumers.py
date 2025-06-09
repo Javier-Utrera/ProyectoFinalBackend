@@ -18,6 +18,7 @@ class TestConsumer(AsyncWebsocketConsumer):
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        print("[ChatConsumer] Conectando...")
         # 1) Extraer relato_id de la URL y definir grupo
         self.relato_id = self.scope['url_route']['kwargs']['relato_id']
         self.group_name = f"chat_relato_{self.relato_id}"

@@ -125,7 +125,7 @@ def generar_factura_pdf(factura: Factura) -> str:
     resultado = cloudinary.uploader.upload(
         io.BytesIO(contenido_pdf),
         resource_type="raw", 
-        public_id=f"factura_{factura.id}.pdf",
+        public_id=f"factura_{factura.id}",
         folder="facturas",
         overwrite=True
     )

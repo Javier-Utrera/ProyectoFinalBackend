@@ -96,7 +96,7 @@ def api_obtener_relato(request, relato_id):
     relato = get_object_or_404(Relato, pk=relato_id)
     permiso = EsPropietarioOModerador()
     if not permiso.has_object_permission(request, None, relato):
-        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_403_FORBIDDEN)
     serializer = RelatoSerializer(relato)
     return Response(serializer.data)
 
@@ -129,22 +129,18 @@ def api_ver_relato_publicado(request, relato_id):
 @permission_classes([IsAuthenticated])
 def api_crear_relato(request):
     usuario = request.user
-
-    # 1) Comprueba si el usuario FREE puede crear un nuevo relato esta semana
     if not usuario.puede_crear_relato():
         return Response(
             {"error": "Has alcanzado el límite semanal de creación de relatos (1 relato/semana para usuarios FREE)."},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 2) Si puede, procedemos con la creación normal
     serializer = RelatoCreateSerializer(data=request.data)
     if not serializer.is_valid():
         return api_errores(serializer)
 
     with transaction.atomic():
         relato = serializer.save()
-        # Inicializamos estadística y participación del autor
         Estadistica.objects.create(relato=relato)
         ParticipacionRelato.objects.create(
             usuario=usuario,
@@ -155,7 +151,11 @@ def api_crear_relato(request):
         relato.comprobar_estado_y_actualizar()
         actualizar_estadisticas(relato)
 
-    return Response({"mensaje": "Relato creado correctamente."}, status=status.HTTP_201_CREATED)
+    # añadimos "tipo": "success"
+    return Response(
+        {"mensaje": "Relato creado correctamente.", "tipo": "success"},
+        status=status.HTTP_201_CREATED
+    )
 
 
 @swagger_auto_schema(
@@ -172,14 +172,19 @@ def api_marcar_relato_listo(request, relato_id):
     relato = get_object_or_404(Relato, pk=relato_id)
     permiso = EsPropietarioOModerador()
     if not permiso.has_object_permission(request, None, relato):
-        return Response({"error": "No tienes permisos para marcar este relato."}, status=status.HTTP_403_FORBIDDEN)
+        return Response({"error": "No tienes permisos para marcar este relato."},
+                        status=status.HTTP_403_FORBIDDEN)
+
     participacion = get_object_or_404(ParticipacionRelato, usuario=request.user, relato=relato)
     if participacion.listo_para_publicar:
-        return Response({"mensaje": "Ya marcado como listo."}, status=status.HTTP_200_OK)
+        # tipo info para "ya marcado"
+        return Response({"mensaje": "Ya marcado como listo.", "tipo": "info"},
+                        status=status.HTTP_200_OK)
+
     participacion.listo_para_publicar = True
     participacion.save()
     relato.comprobar_si_publicar()
-    return Response({"mensaje": "Has marcado el relato como listo."})
+    return Response({"mensaje": "Has marcado el relato como listo.", "tipo": "success"})
 
 
 @swagger_auto_schema(
@@ -192,16 +197,17 @@ def api_marcar_relato_listo(request, relato_id):
     responses={200: "Editado correctamente", 400: "Errores", 403: "Sin permisos"}
 )
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, EsPropietarioOModerador])
 def api_editar_relato(request, relato_id):
-    print("Estoy en api_editar_relato")
-    relato = get_object_or_404(Relato, pk=relato_id)
-    permiso = EsPropietarioOModerador()
-    if not permiso.has_object_permission(request, None, relato):
-        print(permiso)
-        return Response({"error": "Sin permisos para editar este relato."}, status=status.HTTP_403_FORBIDDEN)
-    serializer = RelatoUpdateSerializer(instance=relato, data=request.data, partial=True)
-    return api_errores(serializer, "Relato editado correctamente", status_success=status.HTTP_200_OK)
+    return api_errores(
+        RelatoUpdateSerializer(
+            instance=get_object_or_404(Relato, pk=relato_id),
+            data=request.data,
+            partial=True
+        ),
+        mensaje="Relato editado correctamente",
+        status_success=status.HTTP_200_OK
+    )
 
 
 @swagger_auto_schema(
@@ -216,9 +222,16 @@ def api_editar_relato(request, relato_id):
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated, EsModeradorAdmin])
 def api_editar_relato_final(request, relato_id):
-    relato = get_object_or_404(Relato, pk=relato_id)
-    serializer = RelatoUpdateSerializer(instance=relato, data=request.data, partial=True)
-    return api_errores(serializer, "Relato final editado correctamente", status_success=status.HTTP_200_OK)
+    print("EDITANDO RELATO FINAL")
+    return api_errores(
+        RelatoUpdateSerializer(
+            instance=get_object_or_404(Relato, pk=relato_id),
+            data=request.data,
+            partial=True
+        ),
+        mensaje="Relato final editado correctamente",
+        status_success=status.HTTP_200_OK
+    )
 
 
 @swagger_auto_schema(
@@ -235,9 +248,11 @@ def api_eliminar_relato(request, relato_id):
     relato = get_object_or_404(Relato, pk=relato_id)
     permiso = EsPropietarioOModerador()
     if not permiso.has_object_permission(request, None, relato):
-        return Response({"error": "Sin permisos para eliminar este relato."}, status=status.HTTP_403_FORBIDDEN)
+        return Response({"error": "Sin permisos para eliminar este relato."},
+                        status=status.HTTP_403_FORBIDDEN)
+
     relato.delete()
-    return Response({"mensaje": "Relato eliminado correctamente."})
+    return Response({"mensaje": "Relato eliminado correctamente.", "tipo": "success"})
 
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 class RelatosDisponiblesList(generics.ListAPIView):
@@ -284,30 +299,32 @@ class RelatosDisponiblesList(generics.ListAPIView):
 @permission_classes([IsAuthenticated])
 def api_unirse_a_relato(request, relato_id):
     usuario = request.user
-
-    # 1) Comprueba si el usuario FREE puede participar en un nuevo relato esta semana
     if not usuario.puede_participar_en_relato():
         return Response(
             {"error": "Has alcanzado el límite semanal de participación (2 participaciones/semana para usuarios FREE)."},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 2) Lógica de chequear estado y plazas
     relato = get_object_or_404(Relato, pk=relato_id)
     if relato.estado != 'CREACION':
         return Response({"error": "No acepta más escritores."}, status=status.HTTP_400_BAD_REQUEST)
-    if relato.autores.filter(pk=usuario.pk).exists():
-        return Response({"mensaje": "Ya participas en este relato."}, status=status.HTTP_200_OK)
-    if relato.autores.count() >= relato.num_escritores:
-        return Response({"error": "Máximo de escritores alcanzado."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 3) Si cumple todo, se crea la participación
-    orden = relato.autores.count() + 1
-    ParticipacionRelato.objects.create(usuario=usuario, relato=relato, orden=orden)
+    if relato.autores.filter(pk=usuario.pk).exists():
+        # aquí devolvemos tipo warning
+        return Response({"mensaje": "Ya participas en este relato.", "tipo": "warning"},
+                        status=status.HTTP_200_OK)
+
+    if relato.autores.count() >= relato.num_escritores:
+        return Response({"error": "Máximo de escritores alcanzado."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    ParticipacionRelato.objects.create(usuario=usuario, relato=relato,
+                                      orden=relato.autores.count() + 1)
     relato.comprobar_estado_y_actualizar()
     actualizar_estadisticas(relato)
 
-    return Response({"mensaje": "Te has unido correctamente al relato."}, status=status.HTTP_201_CREATED)
+    return Response({"mensaje": "Te has unido correctamente al relato.", "tipo": "success"},
+                    status=status.HTTP_201_CREATED)
 
 
 @swagger_auto_schema(
@@ -332,7 +349,7 @@ def api_mi_fragmento(request, relato_id):
         relato = Relato.objects.get(pk=relato_id, autores=request.user)
         participacion = get_object_or_404(ParticipacionRelato, relato=relato, usuario=request.user)
     except Relato.DoesNotExist:
-        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "No tienes acceso a este relato."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
         return Response(MiFragmentoSerializer(participacion).data)
@@ -362,6 +379,7 @@ def api_marcar_fragmento_listo(request, relato_id):
         request.user.save(update_fields=['total_palabras_escritas'])
         participacion.listo_para_publicar = True
         participacion.save()
+
     relato = participacion.relato
     if not ParticipacionRelato.objects.filter(relato=relato, listo_para_publicar=False).exists():
         inicial = relato.contenido or ""
@@ -373,7 +391,9 @@ def api_marcar_fragmento_listo(request, relato_id):
         for autor in relato.autores.all():
             autor.total_relatos_publicados = F('total_relatos_publicados') + 1
             autor.save(update_fields=['total_relatos_publicados'])
-    return Response({"mensaje": "Fragmento marcado como listo."})
+
+    # unificamos tipo success
+    return Response({"mensaje": "Fragmento marcado como listo.", "tipo": "success"})
 
 
 @api_view(['GET'])

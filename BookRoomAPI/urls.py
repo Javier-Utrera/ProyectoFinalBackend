@@ -87,4 +87,18 @@ urlpatterns = [
 
     path('paypal/crear-orden/', crear_orden_paypal, name='crear-orden-paypal'),
     path('paypal/capturar-y-suscribirse/', capturar_y_crear_suscripcion, name='capturar_y_crear_suscripcion'),
+
+    #Dashboard de administrador
+    path('admin/dashboard/', DashboardStatsView.as_view(), name='admin-dashboard'),
+    # Listados generales
+    path('admin/usuarios/', AdministradorUsuariosList.as_view(), name='admin-usuarios'),
+    path('admin/relatos/', AdministradorRelatosList.as_view(), name='admin-relatos'),
+    path('admin/participaciones/', AdministradorParticipacionesList.as_view(), name='admin-participaciones'),
+    path('admin/comentarios/', AdministradorComentariosList.as_view(), name='admin-comentarios'),
+    path('admin/votos/', AdministradorVotosList.as_view(), name='admin-votos'),
+    path('admin/suscripciones/', AdministradorSuscripcionesList.as_view(), name='admin-suscripciones'),
+    path('admin/facturas/', AdministradorFacturasList.as_view(), name='admin-facturas'),
+    path('admin/mensajes/', AdministradorMensajesList.as_view(), name='admin-mensajes'),
+    path('admin/estadisticas/', AdministradorEstadisticasList.as_view(), name='admin-estadisticas'),
+    path('admin/peticiones-amistad/', AdministradorPeticionesAmistadList.as_view(), name='admin-peticiones-amistad'),
 ]

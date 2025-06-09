@@ -1,0 +1,22 @@
+[
+{
+  "model": "oauth2_provider.application",
+  "pk": 1,
+  "fields": {
+    "client_id": "ekGnN4JDovmAQDvuKENE9XRlzmVjutAvKwTVqp2o",
+    "user": 1,
+    "redirect_uris": "",
+    "post_logout_redirect_uris": "",
+    "client_type": "confidential",
+    "authorization_grant_type": "password",
+    "client_secret": "pbkdf2_sha256$1000000$4ZFV46CPy5MiOt9mP5FwVv$tWQTmS/OgHJNRavCqF7dh2l324d8TQ+i/Msqep8dzPw=",
+    "hash_client_secret": true,
+    "name": "BookRoomAPI",
+    "skip_authorization": false,
+    "created": "2025-05-18T10:20:18.353Z",
+    "updated": "2025-05-18T10:20:18.353Z",
+    "algorithm": "",
+    "allowed_origins": ""
+  }
+}
+]
