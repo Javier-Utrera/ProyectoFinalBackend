@@ -15,9 +15,27 @@ from datetime import timedelta
 from .models import Suscripcion, Usuario
 from .serializers import UsuarioSerializer
 
+import unicodedata
+import re
+
+
+def limpiar_texto(texto):
+    texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
+    texto = re.sub(r'\W+', '', texto)
+    return texto.lower()
+
+def generar_username_unico(nombre_base):
+    username_base = limpiar_texto(nombre_base) or "usuario"
+    username = username_base
+    contador = 1
+    while Usuario.objects.filter(username=username).exists():
+        username = f"{username_base}{contador}"
+        contador += 1
+    return username
+
 
 class GoogleLoginAPIView(APIView):
-    permission_classes = []  # Público
+    permission_classes = []
 
     def post(self, request):
         token = request.data.get('id_token')
@@ -25,7 +43,6 @@ class GoogleLoginAPIView(APIView):
             return Response({'detail': 'No se envió id_token'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Verifica el ID token contra Google usando tu CLIENT_ID
             idinfo = id_token.verify_oauth2_token(
                 token,
                 google_requests.Request(),
@@ -40,14 +57,22 @@ class GoogleLoginAPIView(APIView):
         if not email:
             return Response({'detail': 'ID token no contiene email'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1) Creamos (o recuperamos) el Usuario
+        base_nombre = nombre if nombre else email.split('@')[0]
+        username_generado = generar_username_unico(base_nombre)
+
         user, created = Usuario.objects.get_or_create(
             email=email,
-            defaults={'username': email, 'first_name': nombre}
+            defaults={'username': username_generado, 'first_name': nombre}
         )
 
-        # 2) Si se acaba de crear el usuario, le añadimos la suscripción FREE
-        if created:
+        if not created:
+            # Actualizar nombre si ha cambiado
+            if user.first_name != nombre:
+                user.first_name = nombre
+                user.save()
+
+        # Gestión suscripción
+        if created or not user.suscripciones.filter(activa=True).exists():
             Suscripcion.objects.create(
                 usuario=user,
                 tipo='FREE',
@@ -55,18 +80,8 @@ class GoogleLoginAPIView(APIView):
                 fecha_inicio=timezone.now(),
                 fecha_fin=None
             )
-        else:
-            # 3) Si ya existía, comprobamos si no tiene ninguna suscripción activa
-            if not user.suscripciones.filter(activa=True).exists():
-                Suscripcion.objects.create(
-                    usuario=user,
-                    tipo='FREE',
-                    activa=True,
-                    fecha_inicio=timezone.now(),
-                    fecha_fin=None
-                )
 
-        # 4) Generamos o reutilizamos el token OAuth2
+        # Token OAuth2
         app = get_object_or_404(Application, name="BookRoomAPI")
         token_obj = AccessToken.objects.filter(
             user=user,

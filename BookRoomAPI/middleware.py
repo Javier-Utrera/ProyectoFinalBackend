@@ -1,5 +1,3 @@
-# BookRoomAPI/middleware.py
-
 from urllib.parse import parse_qs
 from django.contrib.auth.models import AnonymousUser
 from oauth2_provider.models import AccessToken
