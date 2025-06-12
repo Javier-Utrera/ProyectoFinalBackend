@@ -281,7 +281,6 @@ class RelatoCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_generos(self, value):
-        # Opcional: valida que el valor esté en los choices
         choices = dict(Relato.GENERO)
         if value and value not in choices:
             raise serializers.ValidationError("Género no válido.")

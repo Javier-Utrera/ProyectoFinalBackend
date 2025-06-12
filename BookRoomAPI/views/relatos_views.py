@@ -299,11 +299,7 @@ class RelatosDisponiblesList(generics.ListAPIView):
 @permission_classes([IsAuthenticated])
 def api_unirse_a_relato(request, relato_id):
     usuario = request.user
-    if not usuario.puede_participar_en_relato():
-        return Response(
-            {"error": "Has alcanzado el límite semanal de participación (2 participaciones/semana para usuarios FREE)."},
-            status=status.HTTP_403_FORBIDDEN
-        )
+
 
     relato = get_object_or_404(Relato, pk=relato_id)
     if relato.estado != 'CREACION':
@@ -317,6 +313,12 @@ def api_unirse_a_relato(request, relato_id):
     if relato.autores.count() >= relato.num_escritores:
         return Response({"error": "Máximo de escritores alcanzado."},
                         status=status.HTTP_400_BAD_REQUEST)
+    
+    if not usuario.puede_participar_en_relato():
+        return Response(
+            {"error": "Has alcanzado el límite semanal de participación (2 participaciones/semana para usuarios FREE)."},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
     ParticipacionRelato.objects.create(usuario=usuario, relato=relato,
                                       orden=relato.autores.count() + 1)
